@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "polaris-mcp"
+name = "polarix-mcp"
 version = "0.1.0"
 description = "Browser automation MCP server — Map First architecture for AI agents"
 readme = "README.md"
@@ -37,7 +37,7 @@ Repository = "https://github.com/mitgate/polaris-mcp"
 Issues = "https://github.com/mitgate/polaris-mcp/issues"
 
 [project.scripts]
-polaris-mcp = "polaris.__main__:main"
+polarix-mcp = "polaris.__main__:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["polaris"]
