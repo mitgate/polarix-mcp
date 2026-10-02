@@ -1,17 +1,19 @@
-"""FastMCP server instance and capability instructions for Polaris MCP."""
+"""FastMCP server instance and capability instructions for Polarix MCP."""
 
 from __future__ import annotations
 
 from mcp.server.fastmcp import FastMCP
 
-from polaris.config import MCP_HOST, MCP_PORT
+from polarix.config import MCP_HOST, MCP_PORT
 
 _INSTRUCTIONS = """
-You are connected to Polaris MCP — a browser automation server built on the Map First philosophy.
+You are connected to Polarix MCP — browser AND desktop automation built on the Map First philosophy.
 
-CORE PRINCIPLE: Always map a site before automating it. Call browser_map_site first to get the
-complete selector inventory, then use browser_explore_page to discover hidden elements, then
-browser_intercept_network to understand the API layer. Only after that should you write automation.
+CORE PRINCIPLE: Always map before automating. On the web: browser_map_site → browser_explore_page →
+browser_intercept_network. On the desktop: desktop_map_window → desktop_explore_menus. Only after
+that should you write automation. Tools are prefixed by target: browser_* (Playwright, this host),
+desktop_* (native windows in a guest VM via the Polarix agent, or on this host when it is Windows),
+vm_* (hypervisor control of the guest: power, snapshots, screenshots, raw keys).
 
 ════════════════════════════════════════════════════════════════
  LAYER 1 — KNOWLEDGE  (always start here)
@@ -81,7 +83,7 @@ browser_auto_sequence(goal, url, session_file, model, explore, dry_run)
   completo ANTES de planejar — gera a sequência toda de uma vez e executa de
   forma determinística.
   Com dry_run=True retorna apenas os steps gerados sem executar.
-  USE: When you know the goal but not the selectors — Polaris figures out the how.
+  USE: When you know the goal but not the selectors — Polarix figures out the how.
   ADVANTAGE OVER browser_run_task: the LLM sees the full selector map before
   planning, not just the current DOM; generates the entire sequence at once.
 
@@ -115,7 +117,7 @@ browser_login(login_url, username_value, password_value, session_file, ...)
   One-off login via Playwright. Saves session to a file path you specify.
 
 browser_session_save(name, login_url, username_value, password_value, ...)
-  Named login — saves session to POLARIS_SESSIONS_DIR/{name}.json.
+  Named login — saves session to POLARIX_SESSIONS_DIR/{name}.json.
   Preferred over browser_login for reusable sessions.
 
 browser_session_check(name, check_url, login_redirect_patterns)
@@ -139,14 +141,109 @@ browser_get_help()
   Returns this documentation as a string.
 
 ════════════════════════════════════════════════════════════════
- _polaris TELEMETRY (present in every tool response)
+ DESKTOP — native application windows (guest VM or local Windows)
 ════════════════════════════════════════════════════════════════
 
-Every tool response includes a `_polaris` block with observability data:
+Target selection (environment of the Polarix server):
+  POLARIX_DESKTOP_DRIVER=remote + POLARIX_DESKTOP_AGENT_URL=http://<guest-ip>:8020
+      → drives a Polarix agent running inside the VM (python -m polarix.desktop.agent)
+  POLARIX_DESKTOP_DRIVER=auto   → pywinauto, when Polarix itself runs on Windows
+  POLARIX_DESKTOP_DRIVER=fake   → simulated Notepad-like app, any OS (dev/tests)
 
-  _polaris.tool              — tool name that was called
-  _polaris.duration_ms       — total wall-clock time in milliseconds
-  _polaris.browser           — browser state at end of execution:
+Window locator (every desktop_* tool): JSON {"title_re": ".*CadApp.*"} | {"process": "x.exe"} |
+{"handle": 123} | {"title": "..."} — or a plain title substring.
+Control locator (steps): {"auto_id": "1001"} | {"title": "Salvar", "control_type": "Button"} |
+{"path": "0/2/1"} | {"title_re": "..."} | + "found_index" when ambiguous.
+
+KNOWLEDGE
+  desktop_list_windows(title_filter)        top-level windows: title, process, pid, handle
+  desktop_map_window(window_json, max_depth, include_menus)
+      UI Automation control tree + control_index grouped by type + menu bar. The desktop "site map".
+  desktop_explore_menus(window_json, max_items)
+      Opens every top-level menu and returns the items it reveals as "Top->Item" paths.
+
+EXECUTION
+  desktop_launch(path, args, title_re, wait_seconds)   start the app, returns window locator
+  desktop_execute_sequence(steps_json, window_json, stop_on_error)
+      Typed steps: launch · focus · click · double_click · right_click · set_text · type · press ·
+      select · menu · wait_for(locator|window|seconds) · snapshot · screenshot · close.
+      click without locator takes {x, y} relative to the window — canvas fallback only.
+  desktop_auto_sequence(goal, window_json, model, explore, dry_run)
+      Map First in one call: map → explore menus → LLM plans from the control_index → execute.
+
+VERIFICATION
+  desktop_diff_window(window_json, steps_json)   control-tree diff before/after + windows opened/closed
+  desktop_screenshot(window_json)                base64 PNG of a window
+
+MACROS (record once, replay deterministically)
+  desktop_record_start(name, window_json, stop_key)   records real mouse/keyboard → steps (pynput)
+  desktop_record_stop(name, save)                     returns the steps, saved to POLARIX_MACROS_DIR
+  desktop_macro_save(name, steps_json, window_json) · desktop_macro_list() ·
+  desktop_macro_run(name, window_json, stop_on_error) · desktop_macro_delete(name)
+
+Per-step telemetry: { step, action, success, duration_ms, locator_match_count, result, error }
+  locator_match_count = 0 → control not found (re-map the window)
+  locator_match_count > 1 → ambiguous locator, first was used (add found_index or auto_id)
+
+════════════════════════════════════════════════════════════════
+ VM — hypervisor control of the guest (libvirt/virsh, VirtualBox, Android adb)
+════════════════════════════════════════════════════════════════
+
+  vm_backends()                              which CLIs exist on this host
+  vm_list(backend) · vm_start(vm) · vm_stop(vm, force)
+  vm_snapshot_list(vm) · vm_snapshot_save(vm, name) · vm_snapshot_restore(vm, name)
+      Restore a known snapshot before every test run — repeatability comes from here.
+  vm_screenshot(vm)                          guest display via the hypervisor (no agent needed)
+  vm_send_keys(vm, keys_json)                raw keystrokes via the hypervisor (no agent needed)
+  vm_tap(vm, x, y)                           Android emulator tap
+  vm_guest_ip(vm)                            IPv4 of the guest → POLARIX_DESKTOP_AGENT_URL
+  vm_agent_check(agent_url, token)           GET /health on the Polarix agent inside the guest
+
+TESTING — scenarios, assertions, KPIs
+  desktop_run_scenario(scenario, restore_vm, save)
+      One scenario = steps + {"action": "assert", "kind": ...}. Kinds: control_exists ·
+      control_absent · control_enabled · control_disabled · text_equals · text_contains ·
+      window_exists · window_absent · window_title_contains · image_present · image_absent ·
+      vision (expectation judged by a multimodal model). Writes JSON + HTML report.
+  desktop_run_suite(source, name, tags_json, restore_vm)
+      Directory/file/inline list of scenarios → KPIs: pass_rate, assertion_pass_rate,
+      duration, slowest, healed_locators, failures. HTML report with failure screenshots.
+  desktop_scenario_from_macro(macro_name)   recorded macro → scenario with default asserts
+  desktop_report_list()                     saved reports and their KPIs
+
+CANVAS FALLBACKS — when the control tree has nothing (drawing areas)
+  desktop_find_image(window_json, image, threshold)   OpenCV template match → window x,y
+  desktop_vision_locate(window_json, description)     multimodal model → window x,y
+  desktop_vision_verify(window_json, expectation)     multimodal pass/fail with reasoning
+  Step forms: {"action": "click_image", "image": ...} · {"action": "click_vision", "description": ...}
+              {"action": "wait_for", "image": ...} · {"action": "wait_idle"}
+
+LOCATOR HEALING (automatic in every step with a locator)
+  A locator that matches nothing is retried with the recorded hint (title + control_type)
+  and then a fuzzy title match over the live tree. The step reports `healed_locator` and a
+  warning — update the script with it. Suites count healed steps in kpis.healed_locators.
+
+RECOMMENDED DESKTOP WORKFLOW
+  1. vm_snapshot_restore("win11-cadapp", "clean")  → known state
+  2. vm_guest_ip("win11-cadapp") → vm_agent_check("http://<ip>:8020")
+  3. desktop_launch("C:/Program Files/CadApp/CadApp.exe")   (or desktop_list_windows)
+  4. desktop_map_window('{"title_re": ".*CadApp.*"}') → read control_index and menus
+  5. desktop_explore_menus(...)                         → menu paths hidden behind the bar
+  6. desktop_execute_sequence(steps) or desktop_auto_sequence(goal)
+  7. desktop_diff_window(window, steps)                 → assert the UI changed as expected
+  8. desktop_record_start/stop to turn a manual test script into a replayable macro
+
+════════════════════════════════════════════════════════════════
+ _polarix TELEMETRY (present in every tool response)
+════════════════════════════════════════════════════════════════
+
+Every tool response includes a `_polarix` block with observability data:
+
+  _polarix.tool              — tool name that was called
+  _polarix.duration_ms       — total wall-clock time in milliseconds
+  _polarix.desktop           — desktop/vm tools: driver, backend, platform, remote agent URL,
+                               window {title, pid, process, handle, is_active}
+  _polarix.browser           — browser state at end of execution:
     .final_url               — where the browser ended up
     .title                   — page title at end
     .headless                — whether browser ran headless
@@ -154,10 +251,10 @@ Every tool response includes a `_polaris` block with observability data:
     .redirect_detected       — True if final_url looks like a login/auth redirect
     .console_errors          — count of JS errors during execution
     .performance             — page_load_ms and dom_ready_ms from the Performance API
-  _polaris.effective_params  — key parameters actually resolved and used
-  _polaris.warnings          — list of non-fatal issues detected during execution
+  _polarix.effective_params  — key parameters actually resolved and used
+  _polarix.warnings          — list of non-fatal issues detected during execution
 
-Use _polaris to reason about:
+Use _polarix to reason about:
   • Performance: page_load_ms high → site under load or misconfigured
   • Session health: redirect_detected=True → re-authenticate before retrying
   • Selector reliability: warnings about match counts → re-map the page
@@ -192,11 +289,11 @@ Option A — precise, selector-based:
 
 Option B — goal-driven (when you know what, not how):
 7. browser_auto_sequence("fill the search form with 'Paris' and submit", url="https://app.com/dashboard")
-   → Polaris maps the page, generates the steps via LLM, and executes
+   → Polarix maps the page, generates the steps via LLM, and executes
 """
 
 mcp = FastMCP(
-    "Polaris",
+    "Polarix",
     host=MCP_HOST,
     port=MCP_PORT,
     instructions=_INSTRUCTIONS,

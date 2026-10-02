@@ -13,7 +13,7 @@ from browser_use.llm.anthropic.chat import ChatAnthropic
 from browser_use.llm.openai.chat import ChatOpenAI
 from playwright.async_api import Browser, BrowserContext, Page
 
-from polaris.config import ANTHROPIC_API_KEY, HEADLESS, OPENAI_API_KEY, _AUTH_PATTERNS
+from polarix.config import ANTHROPIC_API_KEY, HEADLESS, OPENAI_API_KEY, _AUTH_PATTERNS
 
 
 async def _page_perf(page: Page) -> dict:

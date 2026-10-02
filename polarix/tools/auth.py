@@ -9,16 +9,16 @@ from datetime import datetime
 
 from playwright.async_api import async_playwright
 
-from polaris.browser import (
+from polarix.browser import (
     _attach_console_listener,
     _browser_state,
     _fetch_title,
     _make_context,
     _page_perf,
 )
-from polaris.config import HEADLESS, SESSIONS_DIR
-from polaris.server import mcp
-from polaris.telemetry import _polaris, _start, _wrap
+from polarix.config import HEADLESS, SESSIONS_DIR
+from polarix.server import mcp
+from polarix.telemetry import _polarix, _start, _wrap
 
 
 @mcp.tool()
@@ -29,7 +29,7 @@ async def browser_login(
     username_selector: str = "input[type=email],input[name=username],#username",
     password_selector: str = "input[type=password],input[name=password],#password",
     submit_selector: str = "input[type=submit],button[type=submit],#kc-login",
-    session_file: str = "/tmp/polaris_session.json",
+    session_file: str = "/tmp/polarix_session.json",
     wait_after_login: float = 5.0,
 ) -> str:
     """Log in to a site via Playwright and save the session for later use.
@@ -50,7 +50,7 @@ async def browser_login(
         wait_after_login: Seconds to wait after submit before saving the session.
 
     Returns:
-        JSON with final_url, title, session_file, and _polaris metadata.
+        JSON with final_url, title, session_file, and _polarix metadata.
     """
     t0 = _start()
     warnings: list[str] = []
@@ -116,7 +116,7 @@ async def browser_login(
             "final_url": bstate["final_url"],
             "title": title,
         },
-        _polaris(
+        _polarix(
             "browser_login",
             t0,
             browser=bstate,
@@ -145,7 +145,7 @@ async def browser_session_save(
 ) -> str:
     """Log in and save the session under a friendly name for later reuse.
 
-    Creates two files in POLARIS_SESSIONS_DIR (default: /tmp/polaris_sessions):
+    Creates two files in POLARIX_SESSIONS_DIR (default: /tmp/polarix_sessions):
     • {name}.json       — Playwright storage state (cookies + localStorage)
     • {name}.meta.json  — metadata (username, login URL, timestamps)
 
@@ -161,7 +161,7 @@ async def browser_session_save(
         wait_after_login: Seconds to wait after submit.
 
     Returns:
-        JSON with name, session_file, login result, and _polaris metadata.
+        JSON with name, session_file, login result, and _polarix metadata.
     """
     t0 = _start()
     os.makedirs(SESSIONS_DIR, exist_ok=True)
@@ -199,7 +199,7 @@ async def browser_session_save(
             "login_final_url": login_data.get("final_url"),
             "login_title": login_data.get("title"),
         },
-        _polaris(
+        _polarix(
             "browser_session_save",
             t0,
             params={"name": name, "login_url": login_url, "session_file": session_file},
@@ -225,7 +225,7 @@ async def browser_session_check(
                                  redirect to the login page.
 
     Returns:
-        JSON: { name, valid, final_url, reason, session_file, _polaris }
+        JSON: { name, valid, final_url, reason, session_file, _polarix }
     """
     t0 = _start()
     session_file = os.path.join(SESSIONS_DIR, f"{name}.json")
@@ -238,7 +238,7 @@ async def browser_session_check(
                 "valid": False,
                 "reason": f"Session '{name}' not found in {SESSIONS_DIR}",
             },
-            _polaris(
+            _polarix(
                 "browser_session_check",
                 t0,
                 warnings=[f"Session file not found: {session_file}"],
@@ -282,7 +282,7 @@ async def browser_session_check(
                 else "Session is active"
             ),
         },
-        _polaris(
+        _polarix(
             "browser_session_check",
             t0,
             browser=bstate,
@@ -296,7 +296,7 @@ def browser_session_list() -> str:
     """List all saved named sessions with their metadata and last-known validity.
 
     Returns:
-        JSON: { sessions, count, _polaris }
+        JSON: { sessions, count, _polarix }
     """
     t0 = _start()
     sessions = []
@@ -317,5 +317,5 @@ def browser_session_list() -> str:
 
     return _wrap(
         {"sessions": sessions, "count": len(sessions)},
-        _polaris("browser_session_list", t0, params={"sessions_dir": SESSIONS_DIR}),
+        _polarix("browser_session_list", t0, params={"sessions_dir": SESSIONS_DIR}),
     )

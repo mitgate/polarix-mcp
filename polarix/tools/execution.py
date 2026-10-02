@@ -12,7 +12,7 @@ from typing import Optional
 
 from playwright.async_api import async_playwright
 
-from polaris.browser import (
+from polarix.browser import (
     _attach_console_listener,
     _browser_state,
     _fetch_title,
@@ -21,11 +21,11 @@ from polaris.browser import (
     _make_profile,
     _page_perf,
 )
-from polaris.config import DEFAULT_MODEL, HEADLESS
-from polaris.llm import generate_steps
-from polaris.server import mcp
-from polaris.snapshot import _selector_index, _snapshot
-from polaris.telemetry import _elapsed_ms, _polaris, _start, _wrap
+from polarix.config import DEFAULT_MODEL, HEADLESS
+from polarix.llm import generate_steps
+from polarix.server import mcp
+from polarix.snapshot import _selector_index, _snapshot
+from polarix.telemetry import _elapsed_ms, _polarix, _start, _wrap
 
 
 async def _run_steps(
@@ -192,7 +192,7 @@ async def browser_execute_sequence(  # noqa: C901
         stop_on_error: Stop on the first failed step (default: True).
 
     Returns:
-        JSON: { steps_total, steps_succeeded, final_url, results, _polaris }
+        JSON: { steps_total, steps_succeeded, final_url, results, _polarix }
     """
     t0 = _start()
     try:
@@ -200,7 +200,7 @@ async def browser_execute_sequence(  # noqa: C901
     except json.JSONDecodeError as e:
         return _wrap(
             {"success": False, "error": f"Invalid JSON in steps_json: {e}"},
-            _polaris("browser_execute_sequence", t0),
+            _polarix("browser_execute_sequence", t0),
         )
 
     async with async_playwright() as p:
@@ -228,7 +228,7 @@ async def browser_execute_sequence(  # noqa: C901
             "final_url": final_url,
             "results": results,
         },
-        _polaris(
+        _polarix(
             "browser_execute_sequence",
             t0,
             browser=bstate,
@@ -272,7 +272,7 @@ async def browser_run_playwright(
         timeout_seconds: Total execution timeout in seconds (default: 60).
 
     Returns:
-        JSON: { success, result, final_url, error, _polaris }
+        JSON: { success, result, final_url, error, _polarix }
     """
     t0 = _start()
     cleaned = textwrap.dedent(code.rstrip())
@@ -285,7 +285,7 @@ async def browser_run_playwright(
     except SyntaxError as e:
         return _wrap(
             {"success": False, "result": None, "error": f"SyntaxError: {e}"},
-            _polaris("browser_run_playwright", t0),
+            _polarix("browser_run_playwright", t0),
         )
 
     bstate: dict = {}
@@ -340,7 +340,7 @@ async def browser_run_playwright(
 
     return _wrap(
         output,
-        _polaris(
+        _polarix(
             "browser_run_playwright",
             t0,
             browser=bstate,
@@ -380,7 +380,7 @@ async def browser_run_task(
         session_file: Session file for authenticated sites.
 
     Returns:
-        JSON: { result, model_used, _polaris }
+        JSON: { result, model_used, _polarix }
     """
     from browser_use import Agent
 
@@ -409,7 +409,7 @@ async def browser_run_task(
 
     return _wrap(
         {"result": str(final), "model_used": use_model},
-        _polaris(
+        _polarix(
             "browser_run_task",
             t0,
             params={
@@ -457,7 +457,7 @@ async def browser_inject_js(
         wait_seconds: Seconds to wait after load before executing (default: 3.0).
 
     Returns:
-        JSON: { result, persistent, _polaris }
+        JSON: { result, persistent, _polarix }
     """
     t0 = _start()
     warnings: list[str] = []
@@ -484,7 +484,7 @@ async def browser_inject_js(
 
     return _wrap(
         {"result": result, "persistent": persistent},
-        _polaris(
+        _polarix(
             "browser_inject_js",
             t0,
             browser=bstate,
@@ -528,8 +528,8 @@ async def browser_auto_sequence(  # noqa: C901
         dry_run: If True, return only the generated steps without executing (default: False).
 
     Returns:
-        JSON: { goal, generated_steps, execution: { steps_succeeded, final_url, results }, _polaris }
-        With dry_run=True: { goal, generated_steps, dry_run: true, _polaris }
+        JSON: { goal, generated_steps, execution: { steps_succeeded, final_url, results }, _polarix }
+        With dry_run=True: { goal, generated_steps, dry_run: true, _polarix }
     """
     t0 = _start()
     use_model = model or DEFAULT_MODEL
@@ -609,7 +609,7 @@ async def browser_auto_sequence(  # noqa: C901
             await browser.close()
             return _wrap(
                 {"goal": goal, "generated_steps": steps, "dry_run": True},
-                _polaris(
+                _polarix(
                     "browser_auto_sequence",
                     t0,
                     browser=bstate,
@@ -648,7 +648,7 @@ async def browser_auto_sequence(  # noqa: C901
                 "results": results,
             },
         },
-        _polaris(
+        _polarix(
             "browser_auto_sequence",
             t0,
             browser=bstate,

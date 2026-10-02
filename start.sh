@@ -4,10 +4,10 @@ set -euo pipefail
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="$BASE_DIR/.env"
 
-# Kill any existing Polaris process before starting a fresh one
+# Kill any existing Polarix process before starting a fresh one
 EXISTING=$(pgrep -f "browser_python_mcp.py" 2>/dev/null || true)
 if [[ -n "$EXISTING" ]]; then
-    echo "[polaris] Encerrando sessão anterior (PID: $EXISTING)..."
+    echo "[polarix] Encerrando sessão anterior (PID: $EXISTING)..."
     kill $EXISTING 2>/dev/null || true
     sleep 1
 fi
@@ -25,7 +25,14 @@ export MCP_HOST="${MCP_HOST:-127.0.0.1}"
 export MCP_PORT="${MCP_PORT:-8016}"
 export BROWSER_HEADLESS="${BROWSER_HEADLESS:-true}"
 export BROWSER_USE_MODEL="${BROWSER_USE_MODEL:-gpt-4o-mini}"
-export POLARIS_SESSIONS_DIR="${POLARIS_SESSIONS_DIR:-/tmp/polaris_sessions}"
+export POLARIX_SESSIONS_DIR="${POLARIX_SESSIONS_DIR:-${POLARIS_SESSIONS_DIR:-/tmp/polarix_sessions}}"
+
+# Desktop / VM targets (see README "Desktop automation")
+export POLARIX_DESKTOP_DRIVER="${POLARIX_DESKTOP_DRIVER:-${POLARIS_DESKTOP_DRIVER:-auto}}"
+export POLARIX_DESKTOP_AGENT_URL="${POLARIX_DESKTOP_AGENT_URL:-}"
+export POLARIX_AGENT_TOKEN="${POLARIX_AGENT_TOKEN:-}"
+export POLARIX_VM_BACKEND="${POLARIX_VM_BACKEND:-auto}"
+export POLARIX_MACROS_DIR="${POLARIX_MACROS_DIR:-/tmp/polarix_macros}"
 
 # Never inherit a venv from the calling environment
 unset VIRTUAL_ENV

@@ -7,7 +7,7 @@ from typing import Optional
 
 from playwright.async_api import async_playwright
 
-from polaris.browser import (
+from polarix.browser import (
     _attach_console_listener,
     _browser_state,
     _exec_actions_code,
@@ -15,9 +15,9 @@ from polaris.browser import (
     _make_context,
     _page_perf,
 )
-from polaris.server import mcp
-from polaris.snapshot import _snapshot
-from polaris.telemetry import _polaris, _start, _wrap
+from polarix.server import mcp
+from polarix.snapshot import _snapshot
+from polarix.telemetry import _polarix, _start, _wrap
 
 
 @mcp.tool()
@@ -48,7 +48,7 @@ async def browser_diff_pages(
         wait_seconds: Seconds to wait after loading each state.
 
     Returns:
-        JSON: { added_qa, removed_qa, changed_texts, changed_counts, summary, _polaris }
+        JSON: { added_qa, removed_qa, changed_texts, changed_counts, summary, _polarix }
     """
     t0 = _start()
     warnings: list[str] = []
@@ -115,7 +115,7 @@ async def browser_diff_pages(
                 "count_changes": len(changed_counts),
             },
         },
-        _polaris(
+        _polarix(
             "browser_diff_pages",
             t0,
             browser=bstate,
@@ -147,7 +147,7 @@ async def browser_capture_console(
         levels: Comma-separated console levels to capture (default: "log,warn,error,info").
 
     Returns:
-        JSON: { errors, warnings_console, info, all_messages, messages_captured, _polaris }
+        JSON: { errors, warnings_console, info, all_messages, messages_captured, _polarix }
     """
     t0 = _start()
     target_levels = {lv.strip() for lv in levels.split(",")}
@@ -197,7 +197,7 @@ async def browser_capture_console(
             "info": [m for m in messages if m["type"] in ("log", "info")],
             "all_messages": messages,
         },
-        _polaris(
+        _polarix(
             "browser_capture_console", t0, browser=bstate, params={"levels": levels}
         ),
     )
@@ -220,7 +220,7 @@ async def browser_get_storage(
         wait_seconds: Seconds to wait after loading (default: 3.0).
 
     Returns:
-        JSON: { local_storage, session_storage, cookies, *_keys, cookies_count, _polaris }
+        JSON: { local_storage, session_storage, cookies, *_keys, cookies_count, _polarix }
     """
     t0 = _start()
 
@@ -259,5 +259,5 @@ async def browser_get_storage(
             "session_storage_keys": list(ss.keys()),
             "cookies_count": len(cookies),
         },
-        _polaris("browser_get_storage", t0, browser=bstate),
+        _polarix("browser_get_storage", t0, browser=bstate),
     )
