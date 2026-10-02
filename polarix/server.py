@@ -223,6 +223,20 @@ LOCATOR HEALING (automatic in every step with a locator)
   and then a fuzzy title match over the live tree. The step reports `healed_locator` and a
   warning — update the script with it. Suites count healed steps in kpis.healed_locators.
 
+METRICS — are the commands improving or getting worse?
+  Every browser_/desktop_/vm_ response is recorded in a SQLite ledger (runs, steps, maps,
+  scenarios). Indicators compare the window with the one before it: improving · stable ·
+  worsening · insufficient (< 5 samples). Health score 0–100.
+  metrics_summary(window, target, kind, include_definitions)   all indicators + regressions
+  metrics_trend(indicator, window, bucket, target)             series + SVG chart
+  metrics_dashboard(window, bucket, target)                    HTML dashboard on disk
+  metrics_errors(window, target)        taxonomy, top failing steps, healed locators, map drift
+  metrics_targets(window) · metrics_indicators() · metrics_export(table, window, fmt)
+  Groups: map (stable-id coverage, drift) · locators (hit, broken, ambiguous, healing, pixel
+  fallback) · execution (step/sequence success, tool failures, first-failure depth) ·
+  tests (scenario/assertion pass, flakiness) · speed (p50/p95, wait share).
+  USE: after a batch of runs, call metrics_summary; act on `regressions` first.
+
 RECOMMENDED DESKTOP WORKFLOW
   1. vm_snapshot_restore("win11-cadapp", "clean")  → known state
   2. vm_guest_ip("win11-cadapp") → vm_agent_check("http://<ip>:8020")

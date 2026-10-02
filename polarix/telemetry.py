@@ -36,5 +36,12 @@ def _polarix(
 
 
 def _wrap(data: dict, polarix_block: dict) -> str:
+    """Attach the telemetry block, feed the metrics ledger, serialise."""
+    try:
+        from polarix.metrics.ledger import safe_record
+
+        safe_record(data, polarix_block)
+    except Exception:  # pragma: no cover - metrics must never break a tool
+        pass
     data["_polarix"] = polarix_block
     return json.dumps(data, ensure_ascii=False, indent=2)

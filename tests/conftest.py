@@ -17,6 +17,19 @@ EDITOR = {"title_re": ".*Editor.*"}
 SAVE_AS = {"title_re": ".*Salvar como.*"}
 
 
+@pytest.fixture(autouse=True, scope="session")
+def _isolated_metrics_db(tmp_path_factory):
+    """Every tool call records metrics; keep the suite out of the real ledger."""
+    path = str(tmp_path_factory.mktemp("metrics") / "ledger.sqlite")
+    previous = os.environ.get("POLARIX_METRICS_DB")
+    os.environ["POLARIX_METRICS_DB"] = path
+    yield path
+    if previous is None:
+        os.environ.pop("POLARIX_METRICS_DB", None)
+    else:
+        os.environ["POLARIX_METRICS_DB"] = previous
+
+
 @pytest.fixture
 def fake() -> FakeDesktopDriver:
     return FakeDesktopDriver()

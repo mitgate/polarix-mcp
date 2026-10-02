@@ -75,6 +75,15 @@ CANVAS FALLBACKS — pixels when the control tree has nothing
   desktop_find_image          OpenCV template match → window-relative x, y
   desktop_vision_locate       Multimodal model finds a described element → x, y
   desktop_vision_verify       Multimodal pass/fail judgement with reasoning
+
+METRICS — are the commands improving or getting worse?
+  metrics_summary             Every indicator: now vs previous window, status, health score
+  metrics_trend               Bucketed time series of one indicator + SVG chart
+  metrics_dashboard           HTML dashboard: tiles, sparklines, charts, failures, map drift
+  metrics_errors              Error taxonomy, top failing steps, healed locators, drift
+  metrics_targets             Sites / apps / VMs seen, with run counts
+  metrics_indicators          Definitions and which direction is better
+  metrics_export              Raw ledger rows as JSON or CSV
 ```
 
 ---
@@ -235,6 +244,8 @@ Add to your MCP settings:
 | `POLARIX_MACROS_DIR` | `$TMP/polarix_macros` | Where recorded/saved macros live |
 | `POLARIX_REPORTS_DIR` | `$TMP/polarix_reports` | Where scenario/suite reports (JSON + HTML) are written |
 | `POLARIX_VISION_MODEL` | `BROWSER_USE_MODEL` | Multimodal model for `click_vision`, `assert vision`, `desktop_vision_*` |
+| `POLARIX_METRICS_DB` | `$TMP/polarix_metrics.sqlite` | SQLite ledger every tool call is recorded in |
+| `POLARIX_METRICS` | `on` | `off` disables recording |
 | `POLARIX_DESKTOP_FAKE_APP` | — | JSON fixture for the simulated app (dev/tests) |
 
 Legacy `POLARIS_*` spellings are still read as a fallback.
@@ -405,6 +416,53 @@ desktop_vision_verify('{"title_re": ".*CadApp.*"}', "no error dialog is visible"
 `click_vision` / `assert vision` use `POLARIX_VISION_MODEL` (any vision-capable OpenAI or
 `claude-*` model). Prefer `find_image` whenever you have a reference crop — it is
 deterministic and free.
+
+---
+
+## Metrics — are the commands improving or getting worse?
+
+Every tool response is recorded in a local SQLite ledger (runs, steps, maps,
+scenarios) without the tools knowing about it. Indicators are computed over a
+window and compared with the window right before, so each one says
+**improving**, **stable** or **worsening** — and a 0–100 **health score** sums
+it up. The indicators follow the map: how much of the UI has stable
+identifiers, how fast the map drifts, how often locators break or need healing,
+how reliably steps and scenarios pass, how long things take.
+
+| Group | Indicator | Better | Meaning |
+|-------|-----------|--------|---------|
+| map | `map_stable_id_coverage` | higher | share of mapped elements with a stable id (`data-qa` / `auto_id`) — the automatable surface |
+| map | `map_drift_rate` | lower | identifier change between consecutive maps of the same target (1 − Jaccard) — the app is changing |
+| locators | `locator_hit_rate` · `broken_locator_rate` · `ambiguous_locator_rate` | higher · lower · lower | does the map still fit the application |
+| locators | `healing_rate` | lower | steps that only worked after healing — script debt, update the locators |
+| locators | `pixel_fallback_rate` | lower | interactive steps that needed image/vision instead of the tree |
+| execution | `step_success_rate` · `sequence_success_rate` · `tool_failure_rate` | higher · higher · lower | reliability |
+| execution | `first_failure_depth` | higher | how far failing sequences get (0 first step, 1 last) |
+| tests | `scenario_pass_rate` · `assertion_pass_rate` · `flakiness_rate` | higher · higher · lower | quality of the suite; flaky = passed and failed in the same window |
+| speed | `step_duration_p50_ms` · `step_duration_p95_ms` · `tool_duration_p50_ms` · `wait_share` | lower | time, slow tail, and how much of it is explicit waiting |
+
+A status needs at least 5 samples in both windows; below that it is `insufficient`.
+Rates move when they change ≥ 2 pp, durations when they change ≥ 10 %.
+
+```python
+metrics_summary("7d")
+# → health: {score: 86.4, previous: 61.0, delta: +25.4}
+#   indicators.step_success_rate: {value: 1.0, previous: 0.67, delta: +0.33, n: 28, status: "improving"}
+#   indicators.healing_rate:      {value: 0.25, previous: 0.0, status: "worsening"}   ← update the scripts
+#   regressions: ["healing_rate"], improvements: ["step_success_rate", "scenario_pass_rate", ...]
+
+metrics_trend("step_success_rate", window="30d", bucket="1d")   # points + SVG chart (data URL)
+metrics_errors("7d")        # error taxonomy, failures by action, top failing steps,
+                            # healed locators with the locator that worked, map drift (ids lost/new)
+metrics_dashboard("7d")     # self-contained HTML under POLARIX_REPORTS_DIR
+metrics_summary("7d", target="app.example.com")      # one site
+metrics_summary("7d", target="editor.exe", kind="desktop")
+```
+
+Reading the dashboard: a falling `locator_hit_rate` with rising `map_drift_rate`
+means the application changed; a rising `healing_rate` with a stable success rate
+means Polarix is compensating and the scripts should be updated; a rising
+`pixel_fallback_rate` means the map is not enough and the UI needs identifiers.
 
 ### Known limits
 

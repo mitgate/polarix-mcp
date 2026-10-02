@@ -39,6 +39,11 @@ REPORTS_DIR = env_setting(
 )
 # Multimodal model for click_vision / assert vision (defaults to the planner model)
 VISION_MODEL = env_setting("VISION_MODEL", DEFAULT_MODEL)
+# Metrics ledger (SQLite). POLARIX_METRICS=off disables recording.
+METRICS_DB = env_setting(
+    "METRICS_DB", os.path.join(tempfile.gettempdir(), "polarix_metrics.sqlite")
+)
+METRICS_ENABLED = env_setting("METRICS", "on").lower() not in ("off", "0", "false")
 
 logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger("polarix-mcp")
