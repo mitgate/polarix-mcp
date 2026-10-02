@@ -10,7 +10,7 @@ from urllib.parse import urljoin, urlparse
 
 from playwright.async_api import async_playwright
 
-from polaris.browser import (
+from polarix.browser import (
     _attach_console_listener,
     _browser_state,
     _exec_actions_code,
@@ -18,9 +18,9 @@ from polaris.browser import (
     _make_context,
     _page_perf,
 )
-from polaris.server import mcp
-from polaris.snapshot import _selector_index, _snapshot
-from polaris.telemetry import _elapsed_ms, _polaris, _start, _wrap
+from polarix.server import mcp
+from polarix.snapshot import _selector_index, _snapshot
+from polarix.telemetry import _elapsed_ms, _polarix, _start, _wrap
 
 _CATEGORY_HINTS: dict[str, list[str]] = {
     "analytics": [
@@ -111,7 +111,7 @@ async def browser_map_site(
         follow_links: If False, maps only the entry URL without following links.
 
     Returns:
-        JSON: { base_url, pages_mapped, pages, selector_index, _polaris }
+        JSON: { base_url, pages_mapped, pages, selector_index, _polarix }
     """
     t0 = _start()
     parsed = urlparse(url)
@@ -168,7 +168,7 @@ async def browser_map_site(
             "pages": pages,
             "selector_index": idx,
         },
-        _polaris(
+        _polarix(
             "browser_map_site",
             t0,
             browser=bstate,
@@ -210,7 +210,7 @@ async def browser_explore_page(
         wait_seconds: Seconds to wait after loading (default: 5.0).
 
     Returns:
-        JSON: { static_elements, revealed_after_interactions, total_revealed_qa, _polaris }
+        JSON: { static_elements, revealed_after_interactions, total_revealed_qa, _polarix }
     """
     t0 = _start()
     warnings: list[str] = []
@@ -287,7 +287,7 @@ async def browser_explore_page(
             "revealed_after_interactions": revealed,
             "total_revealed_qa": sum(len(r["new_elements"]) for r in revealed),
         },
-        _polaris(
+        _polarix(
             "browser_explore_page",
             t0,
             browser=bstate,
@@ -328,7 +328,7 @@ async def browser_intercept_network(  # noqa: C901
         max_body_chars: Truncate request/response bodies at this length (default: 2000).
 
     Returns:
-        JSON: { requests_captured, entries, _polaris }
+        JSON: { requests_captured, entries, _polarix }
     """
     t0 = _start()
     target_types = {t.strip() for t in resource_types.split(",")}
@@ -404,7 +404,7 @@ async def browser_intercept_network(  # noqa: C901
 
     return _wrap(
         {"url": url, "requests_captured": len(entries), "entries": entries},
-        _polaris(
+        _polarix(
             "browser_intercept_network",
             t0,
             browser=bstate,
@@ -440,7 +440,7 @@ async def browser_accessibility_tree(
         max_depth: Maximum tree depth in the flat representation (default: 6).
 
     Returns:
-        JSON: { node_count, flat, tree, _polaris }
+        JSON: { node_count, flat, tree, _polarix }
     """
     t0 = _start()
 
@@ -485,7 +485,7 @@ async def browser_accessibility_tree(
     flat = flatten(tree)
     return _wrap(
         {"url": url, "node_count": len(flat), "flat": flat, "tree": tree},
-        _polaris(
+        _polarix(
             "browser_accessibility_tree",
             t0,
             browser=bstate,
@@ -525,7 +525,7 @@ async def browser_get_external_resources(
         include_requests: Capture live network requests in addition to DOM scan.
 
     Returns:
-        JSON: { external_origin_count, external_origins, all_external_url_count, _polaris }
+        JSON: { external_origin_count, external_origins, all_external_url_count, _polarix }
         external_origins is sorted by request count descending, each entry:
           { hostname, category, count, urls: [{url, kind}] }
     """
@@ -630,7 +630,7 @@ async def browser_get_external_resources(
             "external_origins": origins,
             "all_external_url_count": len(unique),
         },
-        _polaris(
+        _polarix(
             "browser_get_external_resources",
             t0,
             browser=bstate,

@@ -10,15 +10,15 @@ from typing import Optional
 
 from playwright.async_api import async_playwright
 
-from polaris.browser import (
+from polarix.browser import (
     _attach_console_listener,
     _browser_state,
     _fetch_title,
     _make_context,
     _page_perf,
 )
-from polaris.server import _INSTRUCTIONS, mcp
-from polaris.telemetry import _polaris, _start, _wrap
+from polarix.server import _INSTRUCTIONS, mcp
+from polarix.telemetry import _polarix, _start, _wrap
 
 
 @mcp.tool()
@@ -37,7 +37,7 @@ async def browser_screenshot(
         full_page: If True, captures the full scrollable page (default: False = viewport only).
 
     Returns:
-        JSON: { image: "data:image/png;base64,...", _polaris }
+        JSON: { image: "data:image/png;base64,...", _polarix }
     """
     t0 = _start()
 
@@ -61,7 +61,7 @@ async def browser_screenshot(
 
     return _wrap(
         {"image": f"data:image/png;base64,{data}"},
-        _polaris(
+        _polarix(
             "browser_screenshot",
             t0,
             browser=bstate,
@@ -84,7 +84,7 @@ async def browser_get_page_content(
         wait_seconds: Seconds to wait after loading (default: 3.0).
 
     Returns:
-        JSON: { text, chars, truncated, _polaris }
+        JSON: { text, chars, truncated, _polarix }
     """
     t0 = _start()
 
@@ -111,11 +111,11 @@ async def browser_get_page_content(
 
     return _wrap(
         {"text": text, "chars": len(text), "truncated": truncated},
-        _polaris("browser_get_page_content", t0, browser=bstate),
+        _polarix("browser_get_page_content", t0, browser=bstate),
     )
 
 
 @mcp.tool()
 def browser_get_help() -> str:
-    """Return full Polaris MCP documentation as a string."""
+    """Return full Polarix MCP documentation as a string."""
     return _INSTRUCTIONS

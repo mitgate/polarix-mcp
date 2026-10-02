@@ -1,4 +1,4 @@
-"""Telemetry helpers — timing, _polaris block construction, and JSON wrapping."""
+"""Telemetry helpers — timing, _polarix block construction, and JSON wrapping."""
 
 from __future__ import annotations
 
@@ -15,16 +15,19 @@ def _elapsed_ms(t0: float) -> int:
     return round((_time.monotonic() - t0) * 1000)
 
 
-def _polaris(
+def _polarix(
     tool: str,
     t0: float,
     browser: Optional[dict] = None,
     params: Optional[dict] = None,
     warnings: Optional[list] = None,
+    desktop: Optional[dict] = None,
 ) -> dict:
     block: dict = {"tool": tool, "duration_ms": _elapsed_ms(t0)}
     if browser:
         block["browser"] = browser
+    if desktop:
+        block["desktop"] = desktop
     if params:
         block["effective_params"] = params
     if warnings:
@@ -32,6 +35,6 @@ def _polaris(
     return block
 
 
-def _wrap(data: dict, polaris_block: dict) -> str:
-    data["_polaris"] = polaris_block
+def _wrap(data: dict, polarix_block: dict) -> str:
+    data["_polarix"] = polarix_block
     return json.dumps(data, ensure_ascii=False, indent=2)
