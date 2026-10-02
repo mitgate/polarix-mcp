@@ -25,6 +25,10 @@ Estado do projeto para quem pegar o próximo passo (humano ou agente).
   * `polarix/desktop/recorder.py` + `macros.py` — gravação (pynput) e macros nomeadas.
   * `polarix/desktop/fake_driver.py` — app simulado (editor + "Salvar como") que também
     **renderiza screenshot** a partir dos rects, para testar matching de imagem.
+* **Métricas** (`metrics_*`): `polarix/metrics/` — `ledger.py` (SQLite alimentado por
+  `telemetry._wrap`, extrai runs/steps/maps/scenarios de qualquer resposta), `indicators.py`
+  (19 indicadores com direção "melhor", janela atual × anterior, deriva do mapa, flakiness,
+  health score), `charts.py` (SVG sem dependências + dashboard HTML).
 * **VM** (`vm_*`): `polarix/vm/backends.py` — libvirt (`virsh`), VirtualBox
   (`VBoxManage`), Android (`adb`/`emulator`) atrás de um `runner` injetável.
 * **Testes**: `python3.11 -m pytest tests` — modelo, steps, asserts, healing, visão
@@ -51,6 +55,9 @@ Estado do projeto para quem pegar o próximo passo (humano ou agente).
 8. `llm.py`: `generate_desktop_steps()`; prompts viraram funções testáveis.
 9. `telemetry._polarix()` aceita `desktop=`.
 10. README: seções de desktop/VM, cenários e KPIs, healing, fallbacks de canvas.
+11. **Métricas** (1.2.0): ledger automático em `_wrap`, indicadores por grupo do mapa
+    (map, locators, execution, tests, speed) com tendência e health score, `metrics_*`
+    tools, dashboard HTML. Tools `metrics_*` não se registram; `POLARIX_METRICS=off` desliga.
 
 ## Pendências e riscos (em ordem)
 
@@ -80,6 +87,10 @@ Estado do projeto para quem pegar o próximo passo (humano ou agente).
    implementariam o mesmo contrato `DesktopDriver` no mesmo agente.
 8. **Segurança do agente**: token em header, HTTP sem TLS — só para a rede interna da VM.
 9. **Compatibilidade**: telemetria mudou de `_polaris` para `_polarix`.
+10. **Métricas**: limiares (2 pp em taxas, 10 % em durações, mínimo 5 amostras) e pesos do
+    health score são chutes razoáveis — calibrar com dados reais. O ledger cresce sem
+    poda; `metrics_export` + apagar o SQLite é a limpeza por enquanto. Drift usa só os
+    identificadores (não posição/texto).
 
 ## Como rodar
 
