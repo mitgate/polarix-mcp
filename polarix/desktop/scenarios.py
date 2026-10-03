@@ -176,20 +176,112 @@ def run_scenario(
     return result
 
 
-def expand_targets(scenarios: list[dict]) -> list[dict]:
-    """A scenario with `targets: [a, b]` becomes one copy per target (name@target)."""
+_VAR = re.compile(r"\$\{([A-Za-z_][\w.]*)\}")
+
+
+def _lookup(path: str, variables: dict) -> Any:
+    cur: Any = variables
+    for part in path.split("."):
+        if isinstance(cur, dict) and part in cur:
+            cur = cur[part]
+        else:
+            raise KeyError(path)
+    return cur
+
+
+def substitute(obj: Any, variables: dict) -> Any:
+    """Replace ${var} / ${var.field} inside every string of a JSON-like value."""
+    if isinstance(obj, str):
+        hit = _VAR.fullmatch(obj.strip())
+        if hit:
+            try:
+                return _lookup(hit.group(1), variables)
+            except KeyError:
+                return obj
+        return _VAR.sub(
+            lambda m: (
+                str(_lookup(m.group(1), variables))
+                if _has(m.group(1), variables)
+                else m.group(0)
+            ),
+            obj,
+        )
+    if isinstance(obj, list):
+        return [substitute(v, variables) for v in obj]
+    if isinstance(obj, dict):
+        return {k: substitute(v, variables) for k, v in obj.items()}
+    return obj
+
+
+def _has(path: str, variables: dict) -> bool:
+    try:
+        _lookup(path, variables)
+        return True
+    except KeyError:
+        return False
+
+
+def _matrix_values(key: str, value: Any) -> list:
+    """A matrix entry must end up as a list — `${browsers}` may point at one."""
+    if isinstance(value, list):
+        return value
+    raise ValueError(
+        f"matrix.{key} must be a list (or ${{var}} naming a list), got {type(value).__name__}"
+    )
+
+
+def _label(value: Any) -> str:
+    if isinstance(value, dict):
+        return str(
+            value.get("name") or value.get("id") or next(iter(value.values()), "")
+        )
+    return str(value)
+
+
+def expand_matrix(
+    scenarios: list[dict], extra_variables: Optional[dict] = None
+) -> list[dict]:
+    """`targets: [...]` and `matrix: {var: [values]}` → one scenario per combination.
+
+    Each copy gets `variables` (matrix values + scenario `variables` + extra) and
+    every `${var}` in its steps substituted. Names become `name@a=x,b=y`.
+    """
     out: list[dict] = []
     for sc in scenarios:
-        targets = sc.get("targets")
-        if isinstance(targets, list) and targets:
-            for t in targets:
-                copy_sc = {k: v for k, v in sc.items() if k != "targets"}
-                copy_sc["target"] = t
-                copy_sc["name"] = f"{sc.get('name', 'scenario')}@{t}"
-                out.append(copy_sc)
-        else:
-            out.append(sc)
+        base_vars = {**(extra_variables or {}), **(sc.get("variables") or {})}
+        matrix: dict[str, list] = {
+            k: _matrix_values(k, substitute(v, base_vars))
+            for k, v in (sc.get("matrix") or {}).items()
+        }
+        if isinstance(sc.get("targets"), list) and sc["targets"]:
+            matrix["target"] = list(sc["targets"])
+        if not matrix:
+            copy_sc = {k: v for k, v in sc.items() if k not in ("matrix", "targets")}
+            copy_sc["variables"] = base_vars
+            out.append(substitute(copy_sc, base_vars) if base_vars else copy_sc)
+            continue
+        keys = list(matrix)
+        combos: list[dict] = [{}]
+        for key in keys:
+            combos = [{**c, key: v} for c in combos for v in matrix[key]]
+        for combo in combos:
+            variables = {**base_vars, **combo}
+            copy_sc = {k: v for k, v in sc.items() if k not in ("matrix", "targets")}
+            if "target" in combo:
+                copy_sc["target"] = combo["target"]
+            suffix = ",".join(
+                _label(v) if k == "target" else f"{k}={_label(v)}"
+                for k, v in combo.items()
+            )
+            copy_sc["name"] = f"{sc.get('name', 'scenario')}@{suffix}"
+            copy_sc["variables"] = variables
+            out.append(substitute(copy_sc, variables))
     return out
+
+
+def expand_targets(scenarios: list[dict]) -> list[dict]:
+    """Backwards-compatible alias of expand_matrix."""
+    return expand_matrix(scenarios)
 
 
 def run_suite(

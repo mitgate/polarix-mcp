@@ -2,7 +2,7 @@
 
 Estado do projeto para quem pegar o próximo passo (humano ou agente).
 
-## Estado atual (2026-10-02)
+## Estado atual (2026-10-03)
 
 * **Nome**: o produto é **Polarix** (o nome Polaris já existia no PyPI). Pacote Python
   `polarix/`, servidor FastMCP "Polarix", bloco de telemetria `_polarix`, variáveis
@@ -31,6 +31,8 @@ Estado do projeto para quem pegar o próximo passo (humano ou agente).
   health score), `charts.py` (SVG sem dependências + dashboard HTML).
 * **VM** (`vm_*`): `polarix/vm/backends.py` — libvirt (`virsh`), VirtualBox
   (`VBoxManage`), Android (`adb`/`emulator`) atrás de um `runner` injetável.
+* **Ambientes** (`environment_*`): `polarix/desktop/environments.py` — políticas de ciclo de vida,
+  decisão (`needs_decision`), estado em JSON, matriz `${var}` nos cenários.
 * **Testes**: `python3.11 -m pytest tests` — modelo, steps, asserts, healing, visão
   (com LLM simulado), cenários/suíte/relatório, gravador, macros, agente ↔ driver remoto
   no loopback, backends de VM com runner roteirizado, camada de tools. Todos passam no
@@ -55,6 +57,18 @@ Estado do projeto para quem pegar o próximo passo (humano ou agente).
 8. `llm.py`: `generate_desktop_steps()`; prompts viraram funções testáveis.
 9. `telemetry._polarix()` aceita `desktop=`.
 10. README: seções de desktop/VM, cenários e KPIs, healing, fallbacks de canvas.
+16. **Ambientes e política de ciclo de vida** (1.6.0): `polarix/desktop/environments.py` +
+    `polarix/tools/environments.py` (6 tools `environment_*`). Ambiente = alvo + passos
+    `install`/`uninstall`/`reset` + `variables`; três camadas (infra = VM/snapshot, sistema =
+    o que está instalado, estado = dados do app); políticas `fresh` (snapshot + install),
+    `reinstall` (uninstall + install), `reset` (limpa dados), `keep` (nada) e `keep_after`
+    (manter de pé ou desinstalar + reverter ao final). **Sem política e sem default a tool
+    devolve `needs_decision` com opções e recomendação — a IA pergunta, nunca escolhe.**
+    Estado (preparado? desde quando? quantas rodadas) em `POLARIX_ENV_STATE`. Cenários
+    ganharam `matrix: {var: [...]}` com substituição `${var}`/`${var.field}` (a matriz pode
+    apontar para uma lista das variáveis do ambiente, ex. `${browsers}`) — é assim que o
+    mesmo teste roda em vários navegadores instalados na mesma VM. Instruções do servidor
+    têm a seção ENVIRONMENTS com a regra de perguntar.
 15. **Driver Android** (1.5.0): `polarix/desktop/android_driver.py` — contrato `DesktopDriver`
     sobre `adb` + `uiautomator dump`, sem agente no aparelho (roda onde o adb roda: emulador
     local, `adb connect`, device farm). Janela = activity em primeiro plano; `title` =
@@ -79,6 +93,12 @@ Estado do projeto para quem pegar o próximo passo (humano ou agente).
     tools, dashboard HTML. Tools `metrics_*` não se registram; `POLARIX_METRICS=off` desliga.
 
 ## Pendências e riscos (em ordem)
+
+0. **Ambientes só rodaram no driver `fake`**: `install`/`uninstall` via `shell` no guest real
+   (winget/apt/adb install) nunca foram exercitados; `fresh` depende de `target.vm.snapshot`
+   e de libvirt/VBox presentes. Falta `environment_run` com `restore_vm` por cenário (hoje a
+   restauração é só a do ambiente) e um "lock" para dois clientes não prepararem o mesmo
+   ambiente ao mesmo tempo.
 
 1. **O driver pywinauto nunca rodou de verdade** — foi escrito no Fedora. Primeiro
    teste dentro da VM Windows, nesta ordem:

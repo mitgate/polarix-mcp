@@ -368,6 +368,127 @@ metrics_summary("7d")                                           # improving / st
 metrics_dashboard("30d")                                        # HTML with charts and map drift
 ```
 
+### Keep it up or throw it away — environments and lifecycle policies
+
+Building a test environment is expensive: restore the VM, install the application,
+maybe install three browsers. Whether the next run should pay that price again
+depends on *what you are testing*, so Polarix never decides it for you.
+
+An **environment** binds a target to the steps that install, uninstall and reset the
+software under test, plus variables the scenarios can use:
+
+```json
+// ~/.config/polarix/environments.json   (or POLARIX_ENVIRONMENTS inline)
+{
+  "win11-editor": {
+    "target": "win11",
+    "install":   [{"action": "shell", "command": "winget install --id Example.Editor -e --accept-package-agreements", "timeout": 600}],
+    "uninstall": [{"action": "shell", "command": "winget uninstall --id Example.Editor"}],
+    "reset":     [{"action": "shell", "command": "del /q %APPDATA%\\Editor\\*"}],
+    "variables": {"app": "C:/Program Files/Editor/editor.exe"}
+  },
+  "win11-browsers": {
+    "target": "win11",
+    "install": [
+      {"action": "shell", "command": "winget install --id Google.Chrome -e --accept-package-agreements"},
+      {"action": "shell", "command": "winget install --id Mozilla.Firefox -e --accept-package-agreements"},
+      {"action": "shell", "command": "winget install --id Microsoft.Edge -e --accept-package-agreements"}
+    ],
+    "uninstall": [
+      {"action": "shell", "command": "winget uninstall --id Google.Chrome"},
+      {"action": "shell", "command": "winget uninstall --id Mozilla.Firefox"}
+    ],
+    "variables": {
+      "browsers": [
+        {"name": "chrome",  "path": "C:/Program Files/Google/Chrome/Application/chrome.exe"},
+        {"name": "firefox", "path": "C:/Program Files/Mozilla Firefox/firefox.exe"},
+        {"name": "edge",    "path": "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"}
+      ]
+    }
+  }
+}
+```
+
+Three layers, four policies, one switch:
+
+| Layer | What it is | Rebuilt by |
+|---|---|---|
+| infrastructure | the VM and its clean snapshot (`target.vm.snapshot`) | `fresh` |
+| system | what is installed on it: the app, browsers, fixtures (`install`) | `fresh`, `reinstall` |
+| state | the app's data between runs (`reset`) | `fresh`, `reinstall`, `reset` |
+
+| Policy | Does | Use it when |
+|---|---|---|
+| `fresh` | restore snapshot → `install` → run | you are testing **the installer itself**, or want a clean room |
+| `reinstall` | `uninstall` → `install` → run (VM kept) | a **new build** of the same application |
+| `reset` | `reset` → run (VM and app kept) | **regression on develop**: same build, clear its data, click through |
+| `keep` | run | iterating on click flows, nothing changed |
+
+`keep_after=true` (default) leaves everything up for the next run; `false` uninstalls
+and reverts the snapshot right after — the one-shot mode.
+
+**The agent asks, it never guesses.** With no `policy` and no `default_policy` on the
+environment, every environment tool answers a question instead of acting:
+
+```python
+environment_plan("win11-editor")
+# → {"needs_decision": true,
+#    "question": "Environment 'win11-editor' is already up. How should this run treat it?",
+#    "options": [
+#      {"policy": "keep",      "keep_after": true,  "recommended": true,  "label": "Keep everything and just run (fastest…)"},
+#      {"policy": "reset",     "keep_after": true,  "label": "Keep the VM and the app, clear the app's data first…"},
+#      {"policy": "reinstall", "keep_after": true,  "label": "Keep the VM, uninstall and reinstall the app (new build)…"},
+#      {"policy": "fresh",     "keep_after": true,  "label": "Restore the clean snapshot, install everything, run, and leave it up…"},
+#      {"policy": "fresh",     "keep_after": false, "label": "…run, then uninstall and revert (one-shot, e.g. installer tests)"}]}
+```
+
+The options shrink to what makes sense: `keep` and `reset` are only offered when the
+environment is up. Set `default_policy` / `default_keep_after` on an environment to skip
+the question for good (a nightly job wants `reset` + keep, a CI installer check wants
+`fresh` + throw away).
+
+Once decided, one call does the whole lifecycle:
+
+```python
+# installer test: clean VM, install, use, uninstall, revert — nothing survives
+environment_run("win11-editor", "scenarios/smoke/", policy="fresh", keep_after=False)
+
+# regression on develop: same VM, same build, clear data, run the click flows, keep it up
+environment_run("win11-editor", "scenarios/regression/", policy="reset", tags_json='["editor"]')
+
+# later, same session: just run again
+environment_run("win11-editor", "scenarios/regression/", policy="keep")
+environment_status("win11-editor")   # → prepared: true, last_policy: "reset", runs: 2
+environment_teardown("win11-editor") # when you are done: uninstall + snapshot restore
+```
+
+Scenarios see the environment's `variables`, so `launch` can say `path: "${app}"` and the
+same file works on a Linux target whose `app` is `/usr/bin/editor`.
+
+**One test, every browser.** `matrix` runs a scenario once per value and substitutes
+`${var}` / `${var.field}` in its steps. Point it at the environment's list of browsers:
+
+```yaml
+name: login-form
+matrix: { browser: "${browsers}" }          # expands to the environment's browsers list
+steps:
+  - { action: launch, path: "${browser.path}", title_re: ".*", wait_seconds: 5 }
+  - { action: type, text: "https://app.example.test/login{ENTER}" }
+  - { action: wait_for, seconds: 3 }
+  - { action: assert, kind: window_title_contains, expected: "Login" }
+  - { action: screenshot }
+  - { action: close, force: true }
+```
+
+```python
+environment_run("win11-browsers", "scenarios/login-form.yaml", policy="fresh")
+# → kpis: {scenarios: 3, passed: 3, …}
+#   results: login-form@browser=chrome · login-form@browser=firefox · login-form@browser=edge
+```
+
+`targets: [win11, ubuntu]` is the same mechanism (`login-form@win11`, `login-form@ubuntu`);
+combine both and you get every browser on every machine.
+
 ---
 
 ## System Requirements
@@ -507,6 +628,9 @@ Add to your MCP settings:
 | `POLARIX_REPORTS_DIR` | `$TMP/polarix_reports` | Where scenario/suite reports (JSON + HTML) are written |
 | `POLARIX_VISION_MODEL` | `BROWSER_USE_MODEL` | Multimodal model for `click_vision`, `assert vision`, `desktop_vision_*` |
 | `POLARIX_TARGETS_FILE` | `~/.config/polarix/targets.json` | Named targets (which machine / OS runs a sequence) |
+| `POLARIX_ENVIRONMENTS_FILE` | Test environments (target + install/uninstall/reset steps + variables) | `~/.config/polarix/environments.json` |
+| `POLARIX_ENVIRONMENTS` | Inline JSON with the same shape (merged over the file) | — |
+| `POLARIX_ENV_STATE` | Where Polarix remembers which environments are up | `$TMP/polarix_env_state.json` |
 | `POLARIX_TARGETS` | — | Same JSON inline; merged over the file |
 | `POLARIX_TARGET` | — | Default target name when a tool gets none |
 | `POLARIX_ANDROID_SERIAL` | — | Device/emulator serial for `POLARIX_DESKTOP_DRIVER=android` |
@@ -539,6 +663,8 @@ server stays on the host; two paths reach the guest:
   agent running in the guest session: `scripts\agent_windows.ps1 -Token SECRET`.
   The agent is standard-library HTTP; the guest needs only Python + `pywinauto`
   (+ `pynput` for recording, `pillow` for screenshots). No Playwright, no MCP SDK.
+* **Lifecycle** (`environment_*`): install / reset / uninstall the software under test and
+  decide, per run, whether the VM and the app survive — see *Keep it up or throw it away*.
 * **Hypervisor path** (`vm_*`): lifecycle and the "blind" fallback — screenshots and
   raw keystrokes through `virsh`/`VBoxManage`/`adb` work before any agent exists, and
   `vm_snapshot_restore` is what makes test runs repeatable.
@@ -1340,6 +1466,28 @@ Returns: `{ kpis: {scenarios, passed, failed, error, pass_rate, assertions_total
 **`desktop_report_list`** — Saved reports with their KPIs.
 
 Assertion kinds: `control_exists` · `control_absent` · `control_enabled` · `control_disabled` · `text_equals` · `text_contains` · `window_exists` · `window_absent` · `window_title_contains` · `image_present` · `image_absent` · `vision`
+
+### ENVIRONMENTS
+
+**`environment_list`** — Configured environments (target, install/uninstall/reset step counts, variables, defaults) and whether each is up.
+Returns: `{ environments: [{name, target, install_steps, uninstall_steps, reset_steps, variables, default_policy, default_keep_after, prepared, runs}], policies, config_file, state_file }`
+
+**`environment_status`** — Is it up, since when, under which policy, how many runs.
+Returns: `{ environment, prepared, prepared_at, last_policy, runs, last_run_at, target }`
+
+**`environment_plan`** — What a run would do — or, without a policy, the question to ask the person.
+Returns: `{ needs_decision, question?, options?: [{policy, keep_after, recommended, label}], policy?, keep_after?, phases?, state }`
+
+**`environment_prepare`** — Bring the environment to the policy's state without running tests (`fresh` restores the VM snapshot and installs; `reinstall`; `reset`; `keep`).
+Returns: `{ ok, environment, policy, phases: {snapshot_restore?, install?, uninstall?, reset?}, state }`
+
+**`environment_run`** — prepare → run a suite with the environment's `${variables}` → keep or tear down (`keep_after`). Refuses with `needs_decision` when no policy is known.
+Returns: `{ environment, policy, keep_after, prepare, kpis, failures, report, teardown?, state }`
+
+**`environment_teardown`** — `uninstall` · `snapshot` · `both` (default) · `none`.
+Returns: `{ ok, environment, mode, phases, state }`
+
+Policies: `fresh` · `reinstall` · `reset` · `keep`. Scenario `matrix: {var: [...]}` and `targets: [...]` run once per combination with `${var}` / `${var.field}` substituted.
 
 ### CANVAS FALLBACKS
 

@@ -3,6 +3,7 @@
 from polarix.tools import (
     auth,
     desktop,
+    environments,
     execution,
     knowledge,
     metrics,
@@ -15,6 +16,7 @@ from polarix.tools import (
 __all__ = [
     "auth",
     "desktop",
+    "environments",
     "execution",
     "knowledge",
     "metrics",
