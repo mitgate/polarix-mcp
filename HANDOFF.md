@@ -69,6 +69,9 @@ Estado do projeto para quem pegar o próximo passo (humano ou agente).
     appium 3 + uiautomator2 e exemplos saíram certos — e pegou que `mcp>=1.0.0` sem teto
     puxava o mcp 2.x (FastMCP renomeado, servidor não sobe): pino `mcp[cli]<2` no pyproject
     e check `python:mcp 1.x API` no doctor.
+    1.8.1: segunda rodada do instalador pegou que `appium driver list` escreve no stderr
+    (detecção reinstalava o driver); doctor lista drivers via `--json` com fallback regex;
+    `start.sh` só adota a `.venv` se `mcp.server.fastmcp` importar.
 17. **Driver `appium`** (1.7.0): `polarix/desktop/appium_driver.py` — contrato `DesktopDriver`
     sobre W3C WebDriver (urllib, sem dependências) para iOS (XCUITest) e Android (UiAutomator2).
     Janela = app em primeiro plano (bundleId / package/Activity); `parse_source` lê o page

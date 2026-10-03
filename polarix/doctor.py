@@ -25,6 +25,7 @@ import importlib
 import json
 import os
 import platform
+import re
 import shutil
 import socket
 import subprocess
@@ -235,6 +236,23 @@ def _android() -> list[dict]:
 
 
 # ---------------------------------------------------------------- appium
+def _appium_drivers(binary: str) -> dict[str, str]:
+    """Installed Appium drivers as {name: version}; `--json` first, text as fallback."""
+    rc, text = _run([binary, "driver", "list", "--installed", "--json"], timeout=30)
+    if rc == 0:
+        try:
+            data = json.loads(text[text.index("{") :])
+            return {
+                name: str((info or {}).get("version", "?"))
+                for name, info in data.items()
+                if isinstance(info, dict) and info.get("installed", True)
+            }
+        except (ValueError, AttributeError):
+            pass
+    rc, text = _run([binary, "driver", "list", "--installed"], timeout=30)
+    return dict(re.findall(r"([a-z0-9-]+)@(\d[\w.-]*)", text))
+
+
 def _appium() -> list[dict]:
     out = []
     binary = shutil.which("appium")
@@ -250,14 +268,14 @@ def _appium() -> list[dict]:
             )
         )
     else:
-        rc, drivers = _run([binary, "driver", "list", "--installed"], timeout=30)
+        drivers = _appium_drivers(binary)
         has_u2 = "uiautomator2" in drivers
         out.append(
             _check(
                 "appium",
                 "appium",
                 "ok" if has_u2 else "warn",
-                f"{binary}; drivers: {drivers.replace(chr(10), ' ')[:120] or 'none'}",
+                f"{binary}; drivers: {', '.join(f'{k}@{v}' for k, v in drivers.items()) or 'none'}",
                 None if has_u2 else "appium driver install uiautomator2",
             )
         )

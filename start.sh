@@ -39,7 +39,7 @@ unset VIRTUAL_ENV
 unset PYTHONPATH
 
 # Prefer the virtualenv that install.sh created; fall back to the system interpreter
-if [[ -x "$BASE_DIR/.venv/bin/python" ]] && "$BASE_DIR/.venv/bin/python" -c "import mcp, playwright" 2>/dev/null; then
+if [[ -x "$BASE_DIR/.venv/bin/python" ]] && "$BASE_DIR/.venv/bin/python" -c "import mcp.server.fastmcp, playwright" 2>/dev/null; then
     PYTHON="$BASE_DIR/.venv/bin/python"
 else
     PYTHON="${POLARIX_PYTHON:-/usr/bin/python3.11}"
