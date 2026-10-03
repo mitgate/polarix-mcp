@@ -15,7 +15,10 @@ Others come from a JSON file (POLARIX_TARGETS_FILE, default
                "vm": {"backend": "libvirt", "name": "win11-lab", "snapshot": "clean"}},
     "win10":  {"driver": "remote", "agent_url": "http://192.168.122.16:8020", "os": "windows"},
     "ubuntu": {"driver": "remote", "agent_url": "http://192.168.122.20:8020", "os": "linux"},
-    "pixel":  {"driver": "android", "serial": "emulator-5554"}
+    "pixel":  {"driver": "android", "serial": "emulator-5554"},
+    "iphone": {"driver": "appium", "server_url": "http://mac-mini.lan:4723",
+               "capabilities": {"platformName": "iOS", "appium:automationName": "XCUITest",
+                                "appium:deviceName": "iPhone 15", "appium:udid": "..."}}
   }
 
 Every desktop tool takes `target`; scenarios take `target` (one) or `targets`
@@ -31,7 +34,7 @@ from typing import Any, Optional
 
 from polarix.config import env_setting
 
-_DRIVERS = ("remote", "fake", "auto", "pywinauto", "android")
+_DRIVERS = ("remote", "fake", "auto", "pywinauto", "android", "appium")
 
 
 def targets_file() -> str:
@@ -64,9 +67,18 @@ def _validate(name: str, cfg: Any) -> dict:
         raise ValueError(f"target '{name}': driver must be one of {_DRIVERS}")
     if driver == "remote" and not cfg.get("agent_url"):
         raise ValueError(f"target '{name}': remote targets need agent_url")
+    if driver == "appium" and not isinstance(cfg.get("capabilities"), dict):
+        raise ValueError(
+            f"target '{name}': appium targets need capabilities "
+            '{"platformName": "iOS"|"Android", "appium:automationName": ...}'
+        )
     out = dict(cfg)
     out["driver"] = driver
     defaults = {"remote": "windows", "pywinauto": "windows", "android": "android"}
+    if driver == "appium":
+        defaults["appium"] = str(
+            cfg["capabilities"].get("platformName", "mobile")
+        ).lower()
     out.setdefault("os", defaults.get(driver, "unknown"))
     return out
 
@@ -118,6 +130,13 @@ def driver_for(name: str):
         from polarix.desktop.android_driver import AndroidAdbDriver
 
         return AndroidAdbDriver(serial=cfg.get("serial"), adb=cfg.get("adb", "adb"))
+    if driver == "appium":
+        from polarix.desktop.appium_driver import AppiumDriver
+
+        return AppiumDriver(
+            server_url=str(cfg.get("server_url", "http://127.0.0.1:4723")),
+            capabilities=cfg["capabilities"],
+        )
     if driver == "remote":
         from polarix.desktop.remote_driver import RemoteDesktopDriver
 
@@ -147,5 +166,8 @@ def describe() -> list[dict]:
             entry["token_set"] = bool(cfg.get("token"))
         if cfg.get("vm"):
             entry["vm"] = cfg["vm"]
+        if cfg["driver"] == "appium":
+            entry["server_url"] = cfg.get("server_url", "http://127.0.0.1:4723")
+            entry["automation"] = cfg["capabilities"].get("appium:automationName")
         out.append(entry)
     return out

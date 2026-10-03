@@ -161,9 +161,15 @@ Choosing WHERE a sequence runs (which machine / operating system):
         target config {"driver": "android", "serial": "..."}. Window = foreground activity
         ({"process": "com.example.app"}); launch takes a package name; menu does not exist;
         shell runs on the device.
-  Guest drivers today: Windows (pywinauto, via agent) and Android (adb). iPhone needs a
-  macOS machine with Appium/XCUITest — not available yet. Linux/macOS guests: same agent
-  contract, driver not written.
+  Guest drivers today: Windows (pywinauto, via agent), Android (adb or appium) and iOS
+  (appium, server on a Mac). Linux/macOS desktop guests: same agent contract, driver not
+  written.
+  POLARIX_DESKTOP_DRIVER=appium + POLARIX_APPIUM_URL + POLARIX_APPIUM_CAPS (JSON), or a
+        target config {"driver": "appium", "server_url": ..., "capabilities": {...}}.
+        Android (UiAutomator2) or iOS (XCUITest) through an Appium server over HTTP.
+        iPhone: the Appium server MUST run on a Mac with Xcode; Polarix can stay on Linux.
+        Window = foreground app (Android: package/Activity, iOS: bundleId); auto_id =
+        resource-id / accessibility name; `shell` only on Android (--relaxed-security).
 
 Window locator (every desktop_* tool): JSON {"title_re": ".*CadApp.*"} | {"process": "x.exe"} |
 {"handle": 123} | {"title": "..."} — or a plain title substring.

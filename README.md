@@ -638,6 +638,9 @@ Add to your MCP settings:
 | `POLARIX_TARGET` | — | Default target name when a tool gets none |
 | `POLARIX_ANDROID_SERIAL` | — | Device/emulator serial for `POLARIX_DESKTOP_DRIVER=android` |
 | `POLARIX_ADB` | `adb` | Path to the adb binary |
+| `POLARIX_APPIUM_URL` | `http://127.0.0.1:4723` | Appium server for `POLARIX_DESKTOP_DRIVER=appium` |
+| `POLARIX_APPIUM_CAPS` | — | JSON capabilities for that session (`platformName`, `appium:automationName`, …) |
+| `POLARIX_LIBVIRT_URI` | `qemu:///system` | libvirt connection for the `libvirt` VM backend (`qemu:///session` = no root) |
 | `POLARIX_METRICS_DB` | `$TMP/polarix_metrics.sqlite` | SQLite ledger every tool call is recorded in |
 | `POLARIX_METRICS` | `on` | `off` disables recording |
 | `POLARIX_DESKTOP_FAKE_APP` | — | JSON fixture for the simulated app (dev/tests) |
@@ -675,11 +678,20 @@ server stays on the host; two paths reach the guest:
 ### Setting up a Windows target on Fedora (KVM)
 
 ```bash
-sudo dnf install libvirt qemu-kvm virt-install virt-viewer    # one-off
+sudo dnf install libvirt qemu-kvm virt-install virt-viewer edk2-ovmf swtpm   # one-off
+sudo systemctl enable --now virtqemud.socket virtnetworkd.socket virtstoraged.socket
+sudo usermod -aG libvirt $USER      # log in again afterwards
 # create the VM (virt-manager or virt-install), install Windows + the apps under test,
 # copy this repo into the guest and run scripts\agent_windows.ps1, then:
 virsh snapshot-create-as win11-cadapp --name clean
 ```
+
+`vm_backends()` tells you whether virsh can actually reach the daemon
+(`libvirt.reachable`) and, when it cannot, what to run. No root? Set
+`POLARIX_LIBVIRT_URI=qemu:///session`: user-mode libvirt works without the daemon or
+the group, with two caveats — its VMs are separate from the system ones, and networking
+is user-mode (slirp/passt), so `vm_guest_ip` cannot read a DHCP lease; give the guest a
+port forward or a static address instead.
 
 ```bash
 # .env on the host
@@ -824,13 +836,58 @@ metrics work unchanged. `desktop_map_app` does not understand Android yet.
 
 **iPhone needs macOS**, full stop — the simulator and the signing of the automation
 helper (WebDriverAgent) only exist with Xcode. From a Linux host the path is an
-Appium server with the XCUITest driver on a Mac (EC2 Mac instance or a real-device
-cloud), spoken to over HTTP. That `appium` driver is the planned next step: one
-implementation of the same `DesktopDriver` contract covers both Android
-(UiAutomator2) and iOS (XCUITest), with `accessibility id` ↔ `auto_id`, label ↔
-`title`, `XCUIElementTypeButton` ↔ `control_type`, and `xcrun simctl install /
-uninstall` as the install and remove steps on a simulator. Until it exists, iOS is out
-of reach for Polarix.
+**Appium server with the XCUITest driver on a Mac** (EC2 Mac instance, a Mac mini on
+the LAN, or a real-device cloud), spoken to over HTTP. That is the `appium` driver: one
+implementation of the `DesktopDriver` contract over the W3C WebDriver protocol, covering
+iOS (XCUITest) and Android (UiAutomator2) alike, stdlib only on the Polarix side.
+
+```json
+{
+  "iphone": {
+    "driver": "appium",
+    "server_url": "http://mac-mini.lan:4723",
+    "capabilities": {
+      "platformName": "iOS", "appium:automationName": "XCUITest",
+      "appium:deviceName": "iPhone 15", "appium:platformVersion": "17.4",
+      "appium:udid": "00008110-001A2B3C4D5E6F7G", "appium:bundleId": "com.example.app"
+    }
+  },
+  "pixel-appium": {
+    "driver": "appium",
+    "capabilities": {"platformName": "Android", "appium:automationName": "UiAutomator2",
+                     "appium:deviceName": "emulator-5554", "appium:noReset": true}
+  }
+}
+```
+
+```python
+desktop_launch("com.example.app", target="iphone")               # mobile: activateApp
+desktop_map_window('{"process": "com.example.app"}', target="iphone")
+# → control_index: {"Button": [{"title": "Add", "auto_id": "plus"}, ...],
+#                   "StaticText": [{"title": "15", "auto_id": "display", "value": "15"}], ...}
+desktop_execute_sequence('[
+  {"action": "click", "locator": {"auto_id": "plus"}},
+  {"action": "set_text", "locator": {"control_type": "TextField"}, "value": "hello"},
+  {"action": "type", "text": "{ENTER}"},
+  {"action": "assert", "kind": "text_equals", "locator": {"auto_id": "display"}, "expected": "15"}]',
+  '{"process": "com.example.app"}', target="iphone")
+```
+
+How the contract maps on iOS: a *window* is the active app (`bundleId`), `control_type`
+is the `XCUIElementType*` without the prefix, `auto_id` is the accessibility `name`,
+`title` is the `label`, `value` is the `value`. Clicks go through the element when the
+control has a `name` or `label` (xpath), and fall back to a W3C pointer tap at the centre
+otherwise; `type` sends `mobile: keys`, `{HOME}` presses the button, `{BACK}` does not
+exist. `shell` is **not available on iOS** — install and remove the app with `shell`
+steps on the Mac that hosts Appium (`xcrun simctl install booted App.app` /
+`xcrun simctl uninstall booted com.example.app`, or `ideviceinstaller` for a real
+device), i.e. a `remote`-driver target for the Mac in the same scenario's `setup`.
+On Android through Appium, `shell` works when the server runs with
+`--relaxed-security`. Environments, scenarios, assertions and metrics are unchanged.
+
+What was never run: the driver is exercised only against a scripted W3C server in the
+tests. First real session should be an Appium 2 server with `appium driver install
+xcuitest` on a Mac and the iOS Simulator's Calculator.
 
 ### Recommended desktop workflow
 
