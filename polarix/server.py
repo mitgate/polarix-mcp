@@ -156,8 +156,14 @@ Choosing WHERE a sequence runs (which machine / operating system):
       → drives a Polarix agent running inside the VM (python -m polarix.desktop.agent)
   POLARIX_DESKTOP_DRIVER=auto   → pywinauto, when Polarix itself runs on Windows
   POLARIX_DESKTOP_DRIVER=fake   → simulated Notepad-like app, any OS (dev/tests)
-  Only a Windows guest driver exists today; a Linux/macOS/Android guest needs its own
-  driver behind the same agent contract.
+  POLARIX_DESKTOP_DRIVER=android + POLARIX_ANDROID_SERIAL=emulator-5554
+      → an Android device/emulator through adb + uiautomator (no agent on the device);
+        target config {"driver": "android", "serial": "..."}. Window = foreground activity
+        ({"process": "com.example.app"}); launch takes a package name; menu does not exist;
+        shell runs on the device.
+  Guest drivers today: Windows (pywinauto, via agent) and Android (adb). iPhone needs a
+  macOS machine with Appium/XCUITest — not available yet. Linux/macOS guests: same agent
+  contract, driver not written.
 
 Window locator (every desktop_* tool): JSON {"title_re": ".*CadApp.*"} | {"process": "x.exe"} |
 {"handle": 123} | {"title": "..."} — or a plain title substring.
