@@ -6,4 +6,4 @@ The MCP entry point (browser_python_mcp.py) imports `polarix.tools`, which
 registers every @mcp.tool() and pulls in Playwright / browser-use.
 """
 
-__version__ = "1.8.0"
+__version__ = "1.8.1"

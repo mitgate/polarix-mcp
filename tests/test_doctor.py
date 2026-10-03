@@ -119,6 +119,46 @@ def test_adb_with_devices_and_libvirt_reachable(monkeypatch):
     assert report["layers"]["android"] is True
 
 
+def test_appium_driver_listing_json_and_text(monkeypatch):
+    monkeypatch.setattr(
+        doctor.shutil,
+        "which",
+        lambda name: "/usr/bin/appium" if name == "appium" else None,
+    )
+    monkeypatch.setenv("POLARIX_APPIUM_URL", "http://127.0.0.1:1")
+    calls = []
+
+    def run_json(cmd, timeout=15.0):
+        calls.append(cmd)
+        if "--json" in cmd:
+            return (
+                0,
+                '{"uiautomator2": {"version": "8.7.0", "installed": true, "pkgName": "appium-uiautomator2-driver"}}',
+            )
+        return 1, ""
+
+    monkeypatch.setattr(doctor, "_run", run_json)
+    appium = next(
+        c for c in doctor.diagnose(["appium"])["checks"] if c["name"] == "appium"
+    )
+    assert appium["status"] == "ok" and "uiautomator2@8.7.0" in appium["detail"]
+
+    def run_text(cmd, timeout=15.0):
+        if "--json" in cmd:
+            return 1, "unknown flag"
+        return (
+            0,
+            "- Listing installed drivers\n\u2714 Listing installed drivers\n- xcuitest@7.1.0 [installed (npm)]\n",
+        )
+
+    monkeypatch.setattr(doctor, "_run", run_text)
+    appium = next(
+        c for c in doctor.diagnose(["appium"])["checks"] if c["name"] == "appium"
+    )
+    assert appium["status"] == "warn" and "xcuitest@7.1.0" in appium["detail"]
+    assert appium["fix"] == "appium driver install uiautomator2"
+
+
 def test_cli_text_and_json(bare_host, capsys):
     code = doctor.main(["config", "llm"])
     out = capsys.readouterr().out

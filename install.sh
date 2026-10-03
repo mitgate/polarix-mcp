@@ -220,7 +220,7 @@ if [[ $WITH_APPIUM -eq 1 ]]; then
       fi
     fi
     if command -v appium >/dev/null 2>&1; then
-      if appium driver list --installed 2>/dev/null | grep -q uiautomator2; then
+      if appium driver list --installed 2>&1 | grep -q uiautomator2; then
         ok "appium driver uiautomator2 present"
       else
         appium driver install uiautomator2 && ok "appium driver uiautomator2 installed" \
