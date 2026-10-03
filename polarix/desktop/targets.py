@@ -14,7 +14,8 @@ Others come from a JSON file (POLARIX_TARGETS_FILE, default
                "token": "SECRET", "os": "windows",
                "vm": {"backend": "libvirt", "name": "win11-lab", "snapshot": "clean"}},
     "win10":  {"driver": "remote", "agent_url": "http://192.168.122.16:8020", "os": "windows"},
-    "ubuntu": {"driver": "remote", "agent_url": "http://192.168.122.20:8020", "os": "linux"}
+    "ubuntu": {"driver": "remote", "agent_url": "http://192.168.122.20:8020", "os": "linux"},
+    "pixel":  {"driver": "android", "serial": "emulator-5554"}
   }
 
 Every desktop tool takes `target`; scenarios take `target` (one) or `targets`
@@ -30,7 +31,7 @@ from typing import Any, Optional
 
 from polarix.config import env_setting
 
-_DRIVERS = ("remote", "fake", "auto", "pywinauto")
+_DRIVERS = ("remote", "fake", "auto", "pywinauto", "android")
 
 
 def targets_file() -> str:
@@ -65,7 +66,8 @@ def _validate(name: str, cfg: Any) -> dict:
         raise ValueError(f"target '{name}': remote targets need agent_url")
     out = dict(cfg)
     out["driver"] = driver
-    out.setdefault("os", "windows" if driver in ("remote", "pywinauto") else "unknown")
+    defaults = {"remote": "windows", "pywinauto": "windows", "android": "android"}
+    out.setdefault("os", defaults.get(driver, "unknown"))
     return out
 
 
@@ -112,6 +114,10 @@ def driver_for(name: str):
             with open(fixture, encoding="utf-8") as f:
                 return FakeDesktopDriver(json.load(f))
         return FakeDesktopDriver()
+    if driver == "android":
+        from polarix.desktop.android_driver import AndroidAdbDriver
+
+        return AndroidAdbDriver(serial=cfg.get("serial"), adb=cfg.get("adb", "adb"))
     if driver == "remote":
         from polarix.desktop.remote_driver import RemoteDesktopDriver
 

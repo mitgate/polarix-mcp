@@ -509,6 +509,8 @@ Add to your MCP settings:
 | `POLARIX_TARGETS_FILE` | `~/.config/polarix/targets.json` | Named targets (which machine / OS runs a sequence) |
 | `POLARIX_TARGETS` | — | Same JSON inline; merged over the file |
 | `POLARIX_TARGET` | — | Default target name when a tool gets none |
+| `POLARIX_ANDROID_SERIAL` | — | Device/emulator serial for `POLARIX_DESKTOP_DRIVER=android` |
+| `POLARIX_ADB` | `adb` | Path to the adb binary |
 | `POLARIX_METRICS_DB` | `$TMP/polarix_metrics.sqlite` | SQLite ledger every tool call is recorded in |
 | `POLARIX_METRICS` | `on` | `off` disables recording |
 | `POLARIX_DESKTOP_FAKE_APP` | — | JSON fixture for the simulated app (dev/tests) |
@@ -641,6 +643,65 @@ targets: [win11, win10]       # one run per target → calc-add@win11, calc-add@
 target is the operating system of its guest: today only the Windows guest driver exists;
 a Linux (AT-SPI), macOS or Android guest would implement the same `DesktopDriver` behind
 the same agent, and the `ubuntu` entry above would start working unchanged.
+
+### Mobile targets — Android now, iPhone through a Mac
+
+The server does not have to share a machine, or an operating system, with what it
+tests. A Polarix MCP on a Linux host (an EC2 instance, say) reaches mobile targets
+like this:
+
+```
+ Linux host (Polarix MCP)
+   ├─ Android ── adb ──► emulator on the same host (needs KVM: a *.metal instance),
+   │                     a device over `adb connect <ip>:5555`, Genymotion Cloud,
+   │                     or a device farm that exposes adb
+   └─ iPhone  ── Appium (W3C WebDriver) ──► macOS machine with Xcode:
+                        EC2 Mac (mac2.metal) running the iOS Simulator, or a real-device
+                        cloud (AWS Device Farm, BrowserStack, Sauce Labs)
+```
+
+**Android works today** with the `android` driver — the `DesktopDriver` contract over
+`adb` + `uiautomator dump`. Nothing is installed on the device; the "agent" is adb
+itself, running wherever Polarix runs.
+
+```json
+{"pixel": {"driver": "android", "serial": "emulator-5554"}}        // targets.json
+```
+
+```python
+desktop_launch("com.android.calculator2", target="pixel")
+desktop_map_window('{"process": "com.android.calculator2"}', target="pixel")
+# → control_index: {"Button": [{"title": "7", "auto_id": "digit_7"}, {"title": "plus", "auto_id": "op_add"}, ...],
+#                   "EditText": [{"title": "formula", "auto_id": "formula", "value": ""}], ...}
+desktop_execute_sequence('[
+  {"action": "click", "locator": {"auto_id": "digit_7"}},
+  {"action": "click", "locator": {"auto_id": "op_add"}},
+  {"action": "click", "locator": {"auto_id": "digit_8"}},
+  {"action": "click", "locator": {"auto_id": "eq"}},
+  {"action": "assert", "kind": "text_equals", "locator": {"auto_id": "result"}, "expected": "15"},
+  {"action": "shell", "command": "pm list packages | grep calculator"}]',
+  '{"process": "com.android.calculator2"}', target="pixel")
+```
+
+How the contract maps: a *window* is the foreground activity (`package/Activity`, so
+`{"process": "com.android.calculator2"}` is the natural locator); `launch` takes a package
+name; `title` is the content-description (what TalkBack reads) or the text, `value` is
+the text, `auto_id` is the `resource-id`; `click` taps the element centre; `menu` does
+not exist (tap the overflow button and then the item by title); `shell` runs **on the
+device** (`adb shell`). Install and remove the app with `shell` steps from the host side
+of adb: `adb install app.apk` / `adb uninstall com.example` through `vm_*`'s android
+backend, or `pm install` on the device. Scenarios, assertions, vision fallbacks and
+metrics work unchanged. `desktop_map_app` does not understand Android yet.
+
+**iPhone needs macOS**, full stop — the simulator and the signing of the automation
+helper (WebDriverAgent) only exist with Xcode. From a Linux host the path is an
+Appium server with the XCUITest driver on a Mac (EC2 Mac instance or a real-device
+cloud), spoken to over HTTP. That `appium` driver is the planned next step: one
+implementation of the same `DesktopDriver` contract covers both Android
+(UiAutomator2) and iOS (XCUITest), with `accessibility id` ↔ `auto_id`, label ↔
+`title`, `XCUIElementTypeButton` ↔ `control_type`, and `xcrun simctl install /
+uninstall` as the install and remove steps on a simulator. Until it exists, iOS is out
+of reach for Polarix.
 
 ### Recommended desktop workflow
 

@@ -55,6 +55,14 @@ Estado do projeto para quem pegar o próximo passo (humano ou agente).
 8. `llm.py`: `generate_desktop_steps()`; prompts viraram funções testáveis.
 9. `telemetry._polarix()` aceita `desktop=`.
 10. README: seções de desktop/VM, cenários e KPIs, healing, fallbacks de canvas.
+15. **Driver Android** (1.5.0): `polarix/desktop/android_driver.py` — contrato `DesktopDriver`
+    sobre `adb` + `uiautomator dump`, sem agente no aparelho (roda onde o adb roda: emulador
+    local, `adb connect`, device farm). Janela = activity em primeiro plano; `title` =
+    content-desc ou text, `value` = text, `auto_id` = resource-id; `menu_select` não existe;
+    `shell` roda NO APARELHO. Driver `android` em `get_driver`/alvos (`serial`). Só testado
+    com adb roteirizado. **iPhone**: não há caminho em Linux — exige macOS (EC2 Mac ou device
+    farm) com Appium/XCUITest; o driver `appium` (W3C WebDriver) seria o próximo passo e
+    cobriria Android e iOS com uma implementação.
 13. **Alvos nomeados** (1.4.0): `polarix/desktop/targets.py` — `targets.json`/`POLARIX_TARGETS`
     (nome → driver, agent_url, token, os, vm); `target` em todas as tools desktop, `target`/
     `targets` (matriz) nos cenários, `POLARIX_TARGET` como padrão, `desktop_targets`.
@@ -98,6 +106,10 @@ Estado do projeto para quem pegar o próximo passo (humano ou agente).
    implementariam o mesmo contrato `DesktopDriver` no mesmo agente.
 8. **Segurança do agente**: token em header, HTTP sem TLS — só para a rede interna da VM.
 9. **Compatibilidade**: telemetria mudou de `_polaris` para `_polarix`.
+12. **Android na AWS**: emulador precisa de KVM (instâncias `.metal`); alternativas: Genymotion
+    Cloud (AMI), aparelho real via `adb connect`, ou device farm com adb exposto. O crawler
+    (`desktop_map_app`) ainda não entende Android (sem menus; openers = clickables; voltar =
+    KEYCODE_BACK).
 11. **Crawler**: só testado no app simulado. Em apps reais, menus `uia` com submenus em
     cascata, diálogos modais que bloqueiam o foco e janelas com títulos iguais (chave é o
     título) são os pontos frágeis; `action_wait` curto demais perde diálogos lentos.

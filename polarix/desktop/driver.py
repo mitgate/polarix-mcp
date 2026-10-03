@@ -6,6 +6,7 @@ Drivers are synchronous (pywinauto is); tools run them through asyncio.to_thread
   auto      — pywinauto on Windows, DesktopUnavailable anywhere else
   pywinauto — force the real driver (Polarix itself runs inside Windows)
   remote    — proxy to a Polarix agent in a guest VM (POLARIX_DESKTOP_AGENT_URL)
+  android   — a device/emulator through adb + uiautomator (POLARIX_ANDROID_SERIAL)
   fake      — the simulated app from fake_driver (any OS, used by the tests)
 """
 
@@ -124,6 +125,14 @@ def get_driver(
 
         return RemoteDesktopDriver.from_env()
 
+    if chosen == "android":
+        from polarix.desktop.android_driver import AndroidAdbDriver
+
+        return AndroidAdbDriver(
+            serial=env_setting("ANDROID_SERIAL", "") or None,
+            adb=env_setting("ADB", "adb"),
+        )
+
     if chosen in ("auto", "pywinauto"):
         if platform.system() != "Windows":
             raise DesktopUnavailable(
@@ -141,5 +150,5 @@ def get_driver(
 
     raise DesktopUnavailable(
         f"Unknown POLARIX_DESKTOP_DRIVER='{chosen}' "
-        "(use auto, pywinauto, remote or fake)"
+        "(use auto, pywinauto, remote, android or fake)"
     )
