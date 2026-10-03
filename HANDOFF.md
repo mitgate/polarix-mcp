@@ -55,6 +55,10 @@ Estado do projeto para quem pegar o próximo passo (humano ou agente).
 8. `llm.py`: `generate_desktop_steps()`; prompts viraram funções testáveis.
 9. `telemetry._polarix()` aceita `desktop=`.
 10. README: seções de desktop/VM, cenários e KPIs, healing, fallbacks de canvas.
+12. **Passo `shell` e `desktop_run_command`** (1.3.0): comando no alvo (no guest, via
+    agente) com código de saída esperado — instalar/desinstalar (`winget`), fixtures,
+    limpeza — para setup/teardown de cenários. `run_command` entrou no contrato
+    `DesktopDriver` (fake, pywinauto, remoto) e no `ALLOWED_METHODS` do agente.
 11. **Métricas** (1.2.0): ledger automático em `_wrap`, indicadores por grupo do mapa
     (map, locators, execution, tests, speed) com tendência e health score, `metrics_*`
     tools, dashboard HTML. Tools `metrics_*` não se registram; `POLARIX_METRICS=off` desliga.

@@ -164,9 +164,12 @@ KNOWLEDGE
 
 EXECUTION
   desktop_launch(path, args, title_re, wait_seconds)   start the app, returns window locator
+  desktop_run_command(command, cwd, timeout)           shell command on the target (winget install,
+                                                       fixtures, cleanup) → exit_code, stdout, stderr
   desktop_execute_sequence(steps_json, window_json, stop_on_error)
       Typed steps: launch · focus · click · double_click · right_click · set_text · type · press ·
-      select · menu · wait_for(locator|window|seconds) · snapshot · screenshot · close.
+      select · menu · wait_for(locator|window|image|seconds) · wait_idle · assert · shell ·
+      snapshot · screenshot · close.
       click without locator takes {x, y} relative to the window — canvas fallback only.
   desktop_auto_sequence(goal, window_json, model, explore, dry_run)
       Map First in one call: map → explore menus → LLM plans from the control_index → execute.

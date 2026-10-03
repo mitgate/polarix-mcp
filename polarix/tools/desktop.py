@@ -238,6 +238,46 @@ async def desktop_explore_menus(window_json: str, max_items: int = 12) -> str:
 
 
 @mcp.tool()
+async def desktop_run_command(
+    command: str, cwd: Optional[str] = None, timeout: float = 120.0
+) -> str:
+    """Run a shell command on the desktop target (inside the VM when the driver is remote).
+
+    For setup and teardown around UI steps: install or remove an application
+    (`winget install ...`), copy fixtures, clean files. Inside sequences and
+    scenarios use the `shell` step, which fails unless the exit code matches.
+
+    Args:
+        command: Command line, run through the target's shell.
+        cwd: Working directory on the target (optional).
+        timeout: Seconds before the command is killed (default: 120).
+
+    Returns:
+        JSON: { exit_code, stdout, stderr, duration_ms, _polarix }
+    """
+    t0 = _start()
+    try:
+        driver = get_driver()
+        outcome = await _run(driver.run_command, command, cwd=cwd, timeout=timeout)
+    except _TOOL_ERRORS as exc:
+        return _fail("desktop_run_command", t0, exc, {"command": command[:120]})
+    return _wrap(
+        {"success": outcome.get("exit_code") == 0, **outcome},
+        _polarix(
+            "desktop_run_command",
+            t0,
+            desktop=_desktop_state(driver, None),
+            params={"command": command[:120], "timeout": timeout},
+            warnings=(
+                None
+                if outcome.get("exit_code") == 0
+                else [f"exit code {outcome.get('exit_code')}"]
+            ),
+        ),
+    )
+
+
+@mcp.tool()
 async def desktop_launch(
     path: str,
     args: str = "",
@@ -291,7 +331,8 @@ async def desktop_execute_sequence(
     """Run a typed JSON action sequence against a window (deterministic, no LLM).
 
     Actions: launch · focus · click · double_click · right_click · set_text ·
-    type · press · select · menu · wait_for · snapshot · screenshot · close.
+    type · press · select · menu · wait_for · wait_idle · assert · click_image ·
+    click_vision · shell · snapshot · screenshot · close.
     Locators: {"auto_id": ...} | {"title": ..., "control_type": ...} | {"path": "0/2/1"};
     click without a locator takes {"x", "y"} relative to the window (canvas fallback).
 

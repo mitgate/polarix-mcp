@@ -180,3 +180,8 @@ class RemoteDesktopDriver:
 
     def control_from_point(self, x: int, y: int) -> Optional[Control]:
         return self._call("control_from_point", x, y)
+
+    def run_command(
+        self, command: str, cwd: Optional[str] = None, timeout: float = 120.0
+    ) -> dict:
+        return self._call("run_command", command, cwd=cwd, timeout=timeout)

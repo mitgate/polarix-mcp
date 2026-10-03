@@ -51,6 +51,7 @@ ALLOWED_METHODS = {
     "wait_control",
     "screenshot",
     "control_from_point",
+    "run_command",
 }
 
 

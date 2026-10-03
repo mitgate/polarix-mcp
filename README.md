@@ -295,6 +295,53 @@ desktop_execute_sequence('[
 `type` sends literal text (specials are escaped for you); `press` takes
 human-readable keys (`ctrl+s`, `alt+f`, `F5`) or raw pywinauto syntax (`{ENTER}`).
 
+### A complete lifecycle — install, use, verify, uninstall
+
+Setup and teardown are commands on the target, not clicks: the `shell` step runs them
+in the guest and fails unless the exit code matches. Everything in between is the map.
+
+```yaml
+# scenarios/calc-scientific-lifecycle.yaml
+name: calc-scientific-lifecycle
+description: install the Calculator, switch to Scientific, add 1 + 1, expect 2, remove it
+tags: [lifecycle, calculator]
+vm: { name: win11-lab, snapshot: clean }
+
+setup:
+  - { action: shell, command: "winget install --id 9WZDNCRFHVN5 --source msstore --accept-package-agreements --accept-source-agreements", timeout: 600 }
+  - { action: launch, path: calc.exe, title_re: ".*Calc.*", wait_seconds: 5 }
+
+steps:
+  # scientific mode: open the navigation pane and pick the mode
+  - { action: click, locator: { auto_id: TogglePaneButton } }
+  - { action: click, locator: { title: "Scientific Calculator", control_type: ListItem } }
+  - { action: wait_for, locator: { auto_id: CalculatorResults } }
+  - { action: assert, kind: window_title_contains, expected: Calculator }
+  # 1 + 1
+  - { action: click, locator: { auto_id: clearButton } }
+  - { action: click, locator: { auto_id: num1Button } }
+  - { action: click, locator: { auto_id: plusButton } }
+  - { action: click, locator: { auto_id: num1Button } }
+  - { action: click, locator: { auto_id: equalButton } }
+  # expected result
+  - { action: assert, kind: text_contains, locator: { auto_id: CalculatorResults }, expected: "2" }
+  - { action: screenshot }
+
+teardown:
+  - { action: close, force: true }
+  - { action: shell, command: "winget uninstall --id 9WZDNCRFHVN5 --source msstore --accept-source-agreements", timeout: 300 }
+  - { action: shell, command: "where calc.exe", expect_exit_code: 1 }      # gone
+```
+
+```python
+desktop_run_scenario("scenarios/calc-scientific-lifecycle.yaml", restore_vm=True)
+# → status: passed · assertions: {total: 2, passed: 2} · phases: {setup: 2, steps: 11, teardown: 3}
+```
+
+`setup` failures mark the scenario `error` (nothing to test), `steps` failures mark it
+`failed`, and `teardown` always runs — so the uninstall happens even when the
+assertion fails. Need the same thing ad hoc? `desktop_run_command("winget list")`.
+
 ### Record once, replay forever
 
 ```python
@@ -544,6 +591,10 @@ Or let the planner do steps 4–6: `desktop_auto_sequence("salvar o projeto como
 | `snapshot` | `max_depth?` | control inventory of the current window |
 | `screenshot` | — | base64 PNG |
 | `close` | `force?` | close (or kill) the current window |
+| `shell` | `command`, `cwd?`, `timeout?`, `expect_exit_code?` | command on the target (install/uninstall, fixtures); fails unless the exit code matches (default 0) |
+| `wait_idle` | `timeout?`, `interval?` | wait until the control tree stops changing |
+| `click_image` / `click_vision` | `image`, `threshold?` / `description`, `model?` | canvas fallbacks — see below |
+| `assert` | `kind`, … | see *Test scenarios, assertions and KPIs* |
 
 Locators: `{"auto_id": "1001"}` · `{"title": "Salvar", "control_type": "Button"}` ·
 `{"title_re": "Sal.*"}` · `{"path": "0/2/1"}` · add `"found_index": n` when ambiguous.
@@ -1084,6 +1135,9 @@ Returns: `{ menus: [{title, items}], menu_paths: ["Top->Item", ...] }`
 
 **`desktop_launch`** — Starts an executable, returns the window and a locator for it.
 Returns: `{ window: {title, process, pid, handle}, window_locator }`
+
+**`desktop_run_command`** — Shell command on the target (inside the VM with the remote driver): install/uninstall, fixtures, cleanup.
+Returns: `{ success, exit_code, stdout, stderr, duration_ms }`
 
 **`desktop_execute_sequence`** — Typed JSON steps against a window.
 Actions: `launch` · `focus` · `click` · `double_click` · `right_click` · `click_image` · `click_vision` · `set_text` · `type` · `press` · `select` · `menu` · `wait_for` · `wait_idle` · `assert` · `snapshot` · `screenshot` · `close`
