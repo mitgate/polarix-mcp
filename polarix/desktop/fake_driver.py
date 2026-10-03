@@ -427,6 +427,11 @@ class FakeDesktopDriver:
                 None,
             )
         )
+        # Escape closes a dialog (class #32770), like Windows does.
+        if "{ESC}" in keys and w.get("class_name") == "#32770":
+            self._record("escape", window=w["title"])
+            self._effect_close_window(w)
+            return
         # pywinauto syntax: {x} types a literal x, {NAME} is a named key,
         # bare ^ % + ~ are modifiers. Keep literals, drop the rest.
         plain = re.sub(r"\{(.)\}", lambda m: "\x00" + m.group(1), keys)

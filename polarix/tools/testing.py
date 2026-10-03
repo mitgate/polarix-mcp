@@ -18,6 +18,7 @@ from polarix.desktop.scenarios import (
     load_scenarios,
     reports_dir,
     run_scenario,
+    expand_targets,
     run_suite,
     save_report,
     scenario_from_macro,
@@ -59,7 +60,10 @@ def _vm_backend_if_needed(scenarios: list[dict], restore: bool):
 
 @mcp.tool()
 async def desktop_run_scenario(
-    scenario: str, restore_vm: bool = False, save: bool = True
+    scenario: str,
+    restore_vm: bool = False,
+    save: bool = True,
+    target: Optional[str] = None,
 ) -> str:
     """Run one test scenario (steps + assertions) and return pass/fail evidence.
 
@@ -95,7 +99,7 @@ async def desktop_run_scenario(
                 f"expected one scenario, got {len(scenarios)} — use desktop_run_suite"
             )
         sc = validate_scenario(scenarios[0])
-        driver = get_driver()
+        driver = get_driver(target=target or sc.get("target"))
         backend = await _run(_vm_backend_if_needed, [sc], restore_vm)
         result = await _run(run_scenario, driver, sc, backend)
         report_paths = None
@@ -133,6 +137,7 @@ async def desktop_run_suite(
     tags_json: Optional[str] = None,
     restore_vm: bool = False,
     include_results: bool = False,
+    target: Optional[str] = None,
 ) -> str:
     """Run a set of scenarios and return the KPIs (pass rate, duration, failures).
 
@@ -153,12 +158,23 @@ async def desktop_run_suite(
     t0 = _start()
     try:
         tags = json.loads(tags_json) if tags_json else None
-        scenarios = [validate_scenario(sc) for sc in load_scenarios(source)]
+        scenarios = [
+            validate_scenario(sc) for sc in expand_targets(load_scenarios(source))
+        ]
         if not scenarios:
             raise ValueError("no scenarios found")
-        driver = get_driver()
+        # resolve per scenario (matrix of targets); the first one also reports state
+        driver = get_driver(target=target or scenarios[0].get("target"))
         backend = await _run(_vm_backend_if_needed, scenarios, restore_vm)
-        report = await _run(run_suite, driver, scenarios, backend, name, tags)
+        report = await _run(
+            run_suite,
+            driver,
+            scenarios,
+            backend,
+            name,
+            tags,
+            lambda sc: get_driver(target=target or sc.get("target")),
+        )
         paths = save_report(report, name)
     except (*_ERRORS, json.JSONDecodeError) as exc:
         return _fail("desktop_run_suite", t0, exc, {"source": source[:120]})
@@ -188,7 +204,10 @@ async def desktop_run_suite(
 
 @mcp.tool()
 async def desktop_scenario_from_macro(
-    macro_name: str, scenario_name: Optional[str] = None, save_as_macro: bool = False
+    macro_name: str,
+    scenario_name: Optional[str] = None,
+    save_as_macro: bool = False,
+    target: Optional[str] = None,
 ) -> str:
     """Turn a recorded macro into a scenario with default assertions.
 
@@ -223,7 +242,7 @@ async def desktop_scenario_from_macro(
 
 
 @mcp.tool()
-async def desktop_report_list(limit: int = 20) -> str:
+async def desktop_report_list(limit: int = 20, target: Optional[str] = None) -> str:
     """List saved test reports (newest first) with their KPIs.
 
     Returns:
@@ -265,7 +284,11 @@ async def desktop_report_list(limit: int = 20) -> str:
 
 @mcp.tool()
 async def desktop_find_image(
-    window_json: str, image: str, threshold: float = 0.85, max_results: int = 5
+    window_json: str,
+    image: str,
+    threshold: float = 0.85,
+    max_results: int = 5,
+    target: Optional[str] = None,
 ) -> str:
     """Locate a template image inside a window screenshot (OpenCV, no LLM).
 
@@ -285,7 +308,7 @@ async def desktop_find_image(
     t0 = _start()
     try:
         window = _window_arg(window_json)
-        driver = get_driver()
+        driver = get_driver(target=target)
         png = await _run(driver.screenshot, window)
         found = await _run(
             find_template, png, load_image_arg(image), threshold, max_results
@@ -306,7 +329,10 @@ async def desktop_find_image(
 
 @mcp.tool()
 async def desktop_vision_locate(
-    window_json: str, description: str, model: Optional[str] = None
+    window_json: str,
+    description: str,
+    model: Optional[str] = None,
+    target: Optional[str] = None,
 ) -> str:
     """Ask a multimodal model where an element described in words is on the window.
 
@@ -324,7 +350,7 @@ async def desktop_vision_locate(
     t0 = _start()
     try:
         window = _window_arg(window_json)
-        driver = get_driver()
+        driver = get_driver(target=target)
         png = await _run(driver.screenshot, window)
         located = await vision_locate(png, description, model)
     except (*_ERRORS, RuntimeError) as exc:
@@ -342,7 +368,10 @@ async def desktop_vision_locate(
 
 @mcp.tool()
 async def desktop_vision_verify(
-    window_json: str, expectation: str, model: Optional[str] = None
+    window_json: str,
+    expectation: str,
+    model: Optional[str] = None,
+    target: Optional[str] = None,
 ) -> str:
     """Judge an expectation about what the window shows, using a multimodal model.
 
@@ -356,7 +385,7 @@ async def desktop_vision_verify(
     t0 = _start()
     try:
         window = _window_arg(window_json)
-        driver = get_driver()
+        driver = get_driver(target=target)
         png = await _run(driver.screenshot, window)
         verdict = await vision_verify(png, expectation, model)
     except (*_ERRORS, RuntimeError) as exc:

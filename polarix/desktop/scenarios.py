@@ -23,7 +23,7 @@ import json
 import os
 import re
 import time
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from polarix.config import env_setting
 from polarix.desktop.driver import DesktopDriver
@@ -122,6 +122,7 @@ def run_scenario(
         "name": sc["name"],
         "description": sc.get("description", ""),
         "tags": sc.get("tags", []),
+        "target": sc.get("target"),
         "status": "passed",
         "phases": {},
         "warnings": [],
@@ -175,18 +176,38 @@ def run_scenario(
     return result
 
 
+def expand_targets(scenarios: list[dict]) -> list[dict]:
+    """A scenario with `targets: [a, b]` becomes one copy per target (name@target)."""
+    out: list[dict] = []
+    for sc in scenarios:
+        targets = sc.get("targets")
+        if isinstance(targets, list) and targets:
+            for t in targets:
+                copy_sc = {k: v for k, v in sc.items() if k != "targets"}
+                copy_sc["target"] = t
+                copy_sc["name"] = f"{sc.get('name', 'scenario')}@{t}"
+                out.append(copy_sc)
+        else:
+            out.append(sc)
+    return out
+
+
 def run_suite(
     driver: DesktopDriver,
     scenarios: list[dict],
     vm_backend: Any = None,
     name: str = "suite",
     tags: Optional[list[str]] = None,
+    driver_for: Optional[Callable[[dict], Any]] = None,
 ) -> dict:
     t0 = _start()
     selected = [
         sc for sc in scenarios if not tags or set(tags) & set(sc.get("tags", []))
     ]
-    results = [run_scenario(driver, sc, vm_backend) for sc in selected]
+    results = [
+        run_scenario(driver_for(sc) if driver_for else driver, sc, vm_backend)
+        for sc in selected
+    ]
     counts = {
         s: sum(1 for r in results if r["status"] == s)
         for s in ("passed", "failed", "error")

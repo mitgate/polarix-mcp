@@ -99,9 +99,18 @@ class DesktopDriver(Protocol):
 
 
 def get_driver(
-    name: Optional[str] = None, backend: Optional[str] = None
+    name: Optional[str] = None,
+    backend: Optional[str] = None,
+    target: Optional[str] = None,
 ) -> DesktopDriver:
-    """Resolve the driver for this process. See module docstring."""
+    """Resolve the driver. A named `target` (or POLARIX_TARGET) wins over the
+    process-wide POLARIX_DESKTOP_DRIVER; see polarix.desktop.targets."""
+    if name is None:
+        from polarix.desktop.targets import default_target, driver_for
+
+        chosen_target = target or default_target()
+        if chosen_target:
+            return driver_for(chosen_target)
     chosen = (name or env_setting("DESKTOP_DRIVER", "auto")).strip().lower()
     backend = backend or env_setting("DESKTOP_BACKEND", "uia")
 

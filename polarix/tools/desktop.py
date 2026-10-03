@@ -120,7 +120,9 @@ def _map_window(driver: DesktopDriver, window: dict, max_depth: int, menus: bool
 
 
 @mcp.tool()
-async def desktop_list_windows(title_filter: Optional[str] = None) -> str:
+async def desktop_list_windows(
+    title_filter: Optional[str] = None, target: Optional[str] = None
+) -> str:
     """List top-level windows on the desktop target (title, process, pid, handle).
 
     Args:
@@ -131,7 +133,7 @@ async def desktop_list_windows(title_filter: Optional[str] = None) -> str:
     """
     t0 = _start()
     try:
-        driver = get_driver()
+        driver = get_driver(target=target)
         windows = await _run(driver.list_windows, title_filter)
     except _TOOL_ERRORS as exc:
         return _fail("desktop_list_windows", t0, exc, {"title_filter": title_filter})
@@ -148,7 +150,10 @@ async def desktop_list_windows(title_filter: Optional[str] = None) -> str:
 
 @mcp.tool()
 async def desktop_map_window(
-    window_json: str, max_depth: int = 8, include_menus: bool = True
+    window_json: str,
+    max_depth: int = 8,
+    include_menus: bool = True,
+    target: Optional[str] = None,
 ) -> str:
     """Inventory the UI Automation control tree of a window — the desktop "site map".
 
@@ -170,7 +175,7 @@ async def desktop_map_window(
         window = _window_arg(window_json)
         if window is None:
             raise ValueError("window_json is required")
-        driver = get_driver()
+        driver = get_driver(target=target)
         data, _ = await _run(_map_window, driver, window, max_depth, include_menus)
     except _TOOL_ERRORS as exc:
         return _fail("desktop_map_window", t0, exc, {"window_json": window_json})
@@ -186,7 +191,9 @@ async def desktop_map_window(
 
 
 @mcp.tool()
-async def desktop_explore_menus(window_json: str, max_items: int = 12) -> str:
+async def desktop_explore_menus(
+    window_json: str, max_items: int = 12, target: Optional[str] = None
+) -> str:
     """Open each top-level menu and record the items it reveals.
 
     Desktop twin of browser_explore_page: menus hide most commands of a native
@@ -205,7 +212,7 @@ async def desktop_explore_menus(window_json: str, max_items: int = 12) -> str:
         window = _window_arg(window_json)
         if window is None:
             raise ValueError("window_json is required")
-        driver = get_driver()
+        driver = get_driver(target=target)
         menus = await _run(driver.menu_items, window, True)
     except _TOOL_ERRORS as exc:
         return _fail("desktop_explore_menus", t0, exc, {"window_json": window_json})
@@ -238,8 +245,125 @@ async def desktop_explore_menus(window_json: str, max_items: int = 12) -> str:
 
 
 @mcp.tool()
+async def desktop_targets() -> str:
+    """List the named targets a sequence can run on (which machine / operating system).
+
+    Built-in: `fake` (simulated editor, any OS) and `local` (this machine, Windows only).
+    Others come from POLARIX_TARGETS_FILE (~/.config/polarix/targets.json) or the
+    POLARIX_TARGETS JSON env var — each with driver, agent_url, os and optional vm.
+    Pass the name as `target` to any desktop tool, or set `target` / `targets` in a scenario.
+
+    Returns:
+        JSON: { targets: [{name, driver, os, description, default, agent_url?, token_set?, vm?}],
+                default, targets_file, _polarix }
+    """
+    t0 = _start()
+    from polarix.desktop.targets import default_target, describe, targets_file
+
+    try:
+        targets = describe()
+    except (ValueError, OSError, json.JSONDecodeError) as exc:
+        return _fail("desktop_targets", t0, exc, {"targets_file": targets_file()})
+    return _wrap(
+        {
+            "target_count": len(targets),
+            "targets": targets,
+            "default": default_target(),
+            "targets_file": targets_file(),
+        },
+        _polarix("desktop_targets", t0, params={"targets_file": targets_file()}),
+    )
+
+
+@mcp.tool()
+async def desktop_map_app(
+    window_json: str,
+    max_depth: int = 2,
+    max_windows: int = 25,
+    include_tabs: bool = True,
+    include_openers: bool = True,
+    allow_destructive: bool = False,
+    action_wait: float = 0.6,
+    time_budget: float = 180.0,
+    target: Optional[str] = None,
+) -> str:
+    """Map the whole application — the desktop twin of browser_map_site.
+
+    From the given window, opens every menu item, every "…" button and every
+    tab; each new window or dialog is mapped, crawled (down to max_depth) and
+    closed again with Cancel/Close/Escape — never with OK or Save. Exit items
+    are never selected; delete/remove/uninstall/format/reset items are skipped
+    unless allow_destructive=True.
+
+    Args:
+        window_json: Main window locator (see desktop_map_window).
+        max_depth: How many dialog levels to crawl below the main window (default: 2).
+        max_windows: Stop after this many windows have been mapped (default: 25).
+        include_tabs: Click each TabItem and record what it reveals (default: True).
+        include_openers: Click buttons whose title ends with "…" (default: True).
+        allow_destructive: Also select items that look destructive (default: False).
+        action_wait: Seconds to wait after each action for the UI to settle (default: 0.6).
+        time_budget: Overall time limit in seconds (default: 180).
+
+    Returns:
+        JSON: { root, windows: [{title, depth, reached_by, control_count, control_index, menus}],
+                edges: [{from, via, to}], effects, tabs, skipped, feature_index: [{kind, name,
+                window, reach, locator?, shortcut?}], coverage: {windows_mapped, dialogs_opened,
+                controls_total, menu_paths, features_by_kind, actions_skipped, budget_exhausted,
+                duration_ms}, problems, _polarix }
+    """
+    t0 = _start()
+    try:
+        window = _window_arg(window_json)
+        if window is None:
+            raise ValueError("window_json is required")
+        from polarix.desktop.crawler import CrawlOptions, crawl_app
+
+        driver = get_driver(target=target)
+        result = await _run(
+            crawl_app,
+            driver,
+            window,
+            CrawlOptions(
+                max_depth=max_depth,
+                max_windows=max_windows,
+                include_tabs=include_tabs,
+                include_openers=include_openers,
+                allow_destructive=allow_destructive,
+                action_wait=action_wait,
+                time_budget=time_budget,
+            ),
+        )
+    except _TOOL_ERRORS as exc:
+        return _fail("desktop_map_app", t0, exc, {"window_json": window_json})
+    warnings = list(result.get("problems") or [])
+    if result["coverage"]["budget_exhausted"]:
+        warnings.append(
+            "budget exhausted — raise max_windows or time_budget to go further"
+        )
+    return _wrap(
+        result,
+        _polarix(
+            "desktop_map_app",
+            t0,
+            desktop=_desktop_state(driver, window),
+            params={
+                "max_depth": max_depth,
+                "max_windows": max_windows,
+                "include_tabs": include_tabs,
+                "allow_destructive": allow_destructive,
+            },
+            warnings=warnings or None,
+        ),
+    )
+
+
+@mcp.tool()
 async def desktop_run_command(
-    command: str, cwd: Optional[str] = None, timeout: float = 120.0
+    command: str,
+    cwd: Optional[str] = None,
+    timeout: float = 120.0,
+    target: Optional[str] = None,
 ) -> str:
     """Run a shell command on the desktop target (inside the VM when the driver is remote).
 
@@ -257,7 +381,7 @@ async def desktop_run_command(
     """
     t0 = _start()
     try:
-        driver = get_driver()
+        driver = get_driver(target=target)
         outcome = await _run(driver.run_command, command, cwd=cwd, timeout=timeout)
     except _TOOL_ERRORS as exc:
         return _fail("desktop_run_command", t0, exc, {"command": command[:120]})
@@ -283,6 +407,7 @@ async def desktop_launch(
     args: str = "",
     title_re: Optional[str] = None,
     wait_seconds: float = 3.0,
+    target: Optional[str] = None,
 ) -> str:
     """Start an application on the desktop target and return its main window.
 
@@ -298,7 +423,7 @@ async def desktop_launch(
     """
     t0 = _start()
     try:
-        driver = get_driver()
+        driver = get_driver(target=target)
         info = await _run(
             driver.launch,
             path,
@@ -327,6 +452,7 @@ async def desktop_execute_sequence(
     steps_json: str,
     window_json: Optional[str] = None,
     stop_on_error: bool = True,
+    target: Optional[str] = None,
 ) -> str:
     """Run a typed JSON action sequence against a window (deterministic, no LLM).
 
@@ -358,7 +484,7 @@ async def desktop_execute_sequence(
         if not isinstance(steps, list):
             raise ValueError("steps_json must be a JSON array")
         window = _window_arg(window_json)
-        driver = get_driver()
+        driver = get_driver(target=target)
         results, warnings, final_window = await _run(
             run_desktop_steps, driver, window, steps, stop_on_error
         )
@@ -388,6 +514,7 @@ async def desktop_auto_sequence(
     model: Optional[str] = None,
     explore: bool = True,
     dry_run: bool = False,
+    target: Optional[str] = None,
 ) -> str:
     """Map First in one call for a desktop window: map → explore menus → plan via LLM → execute.
 
@@ -411,7 +538,7 @@ async def desktop_auto_sequence(
         window = _window_arg(window_json)
         if window is None:
             raise ValueError("window_json is required")
-        driver = get_driver()
+        driver = get_driver(target=target)
         data, _ = await _run(_map_window, driver, window, 8, True)
         menus = data.get("menus", [])
         if explore:
@@ -473,7 +600,10 @@ async def desktop_auto_sequence(
 
 @mcp.tool()
 async def desktop_diff_window(
-    window_json: str, steps_json: str, max_depth: int = 8
+    window_json: str,
+    steps_json: str,
+    max_depth: int = 8,
+    target: Optional[str] = None,
 ) -> str:
     """Snapshot a window, run steps, snapshot again and diff the control trees.
 
@@ -498,7 +628,7 @@ async def desktop_diff_window(
         steps = _parse_json(steps_json, "steps_json")
         if not isinstance(steps, list):
             raise ValueError("steps_json must be a JSON array")
-        driver = get_driver()
+        driver = get_driver(target=target)
 
         def _work():
             before_windows = {w["title"] for w in driver.list_windows()}
@@ -551,7 +681,9 @@ async def desktop_diff_window(
 
 
 @mcp.tool()
-async def desktop_screenshot(window_json: Optional[str] = None) -> str:
+async def desktop_screenshot(
+    window_json: Optional[str] = None, target: Optional[str] = None
+) -> str:
     """Capture a window (or the active one) as a base64 PNG.
 
     Args:
@@ -563,7 +695,7 @@ async def desktop_screenshot(window_json: Optional[str] = None) -> str:
     t0 = _start()
     try:
         window = _window_arg(window_json)
-        driver = get_driver()
+        driver = get_driver(target=target)
         png = await _run(driver.screenshot, window)
     except _TOOL_ERRORS as exc:
         return _fail("desktop_screenshot", t0, exc, {"window_json": window_json})
@@ -580,7 +712,10 @@ async def desktop_screenshot(window_json: Optional[str] = None) -> str:
 
 @mcp.tool()
 async def desktop_record_start(
-    name: str, window_json: Optional[str] = None, stop_key: str = "f10"
+    name: str,
+    window_json: Optional[str] = None,
+    stop_key: str = "f10",
+    target: Optional[str] = None,
 ) -> str:
     """Start recording real mouse/keyboard activity into a macro (needs pynput on the target).
 
@@ -601,7 +736,7 @@ async def desktop_record_start(
         if name in ACTIVE and ACTIVE[name].status()["recording"]:
             raise ValueError(f"Recorder '{name}' is already running")
         window = _window_arg(window_json)
-        driver = get_driver()
+        driver = get_driver(target=target)
         rec = MacroRecorder(driver, window, name, stop_key=stop_key)
         await _run(rec.start)
         ACTIVE[name] = rec
@@ -614,7 +749,9 @@ async def desktop_record_start(
 
 
 @mcp.tool()
-async def desktop_record_stop(name: str, save: bool = True) -> str:
+async def desktop_record_stop(
+    name: str, save: bool = True, target: Optional[str] = None
+) -> str:
     """Stop a running recording; return (and by default save) the recorded steps.
 
     Args:
@@ -654,7 +791,10 @@ async def desktop_record_stop(name: str, save: bool = True) -> str:
 
 @mcp.tool()
 async def desktop_macro_save(
-    name: str, steps_json: str, window_json: Optional[str] = None
+    name: str,
+    steps_json: str,
+    window_json: Optional[str] = None,
+    target: Optional[str] = None,
 ) -> str:
     """Save a hand-written or generated step sequence as a named macro.
 
@@ -681,7 +821,7 @@ async def desktop_macro_save(
 
 
 @mcp.tool()
-async def desktop_macro_list() -> str:
+async def desktop_macro_list(target: Optional[str] = None) -> str:
     """List saved macros with step count, source (recorded/generated/manual) and window.
 
     Returns:
@@ -697,7 +837,10 @@ async def desktop_macro_list() -> str:
 
 @mcp.tool()
 async def desktop_macro_run(
-    name: str, window_json: Optional[str] = None, stop_on_error: bool = True
+    name: str,
+    window_json: Optional[str] = None,
+    stop_on_error: bool = True,
+    target: Optional[str] = None,
 ) -> str:
     """Replay a saved macro (optionally against a different window).
 
@@ -713,7 +856,7 @@ async def desktop_macro_run(
     try:
         doc = load_macro(name)
         window = _window_arg(window_json) or doc.get("window")
-        driver = get_driver()
+        driver = get_driver(target=target)
         results, warnings, final_window = await _run(
             run_desktop_steps, driver, window, doc["steps"], stop_on_error
         )
@@ -738,7 +881,7 @@ async def desktop_macro_run(
 
 
 @mcp.tool()
-async def desktop_macro_delete(name: str) -> str:
+async def desktop_macro_delete(name: str, target: Optional[str] = None) -> str:
     """Delete a saved macro.
 
     Returns:
