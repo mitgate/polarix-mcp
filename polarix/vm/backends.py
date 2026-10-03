@@ -98,7 +98,39 @@ class LibvirtBackend(_Base):
         self, runner: Optional[Runner] = None, uri: Optional[str] = None
     ) -> None:
         super().__init__(runner)
-        self.uri = uri or os.getenv("LIBVIRT_DEFAULT_URI", "qemu:///system")
+        self.uri = (
+            uri
+            or env_setting("LIBVIRT_URI", "")
+            or os.getenv("LIBVIRT_DEFAULT_URI", "qemu:///system")
+        )
+
+    def connection_report(self) -> dict:
+        """Can virsh reach the daemon at this URI? If not, say what to do.
+
+        qemu:///system needs libvirtd/virtqemud running and the user in the `libvirt`
+        group; qemu:///session works for the user alone, without root, but its VMs
+        are separate from the system ones and NAT networking needs slirp/passt.
+        """
+        report: dict = {"uri": self.uri, "reachable": False}
+        try:
+            self._run("list", "--all", "--name")
+            report["reachable"] = True
+            return report
+        except VMUnavailable as exc:
+            report["error"] = str(exc)[:300]
+        hints = []
+        if "system" in self.uri:
+            hints.append(
+                "sudo systemctl enable --now virtqemud.socket virtnetworkd.socket "
+                "virtstoraged.socket (or libvirtd) && sudo usermod -aG libvirt $USER, "
+                "then log in again"
+            )
+            hints.append(
+                "or set POLARIX_LIBVIRT_URI=qemu:///session to use user-mode libvirt "
+                "without root"
+            )
+        report["hints"] = hints
+        return report
 
     def _run(self, *args: str, ok_codes: tuple[int, ...] = (0,)) -> str:
         return super()._run("--connect", self.uri, *args, ok_codes=ok_codes)

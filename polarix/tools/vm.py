@@ -52,15 +52,24 @@ async def vm_backends() -> str:
     """Report which hypervisor CLIs are available on this host.
 
     Returns:
-        JSON: { available: {libvirt, virtualbox, android}, default, _polarix }
+        JSON: { available: {libvirt, virtualbox, android}, default,
+                libvirt?: {uri, reachable, error?, hints?}, _polarix }
+        `available.libvirt` means virsh exists; `libvirt.reachable` means the daemon
+        answered at that URI. Follow `hints` when it did not.
     """
     t0 = _start()
     avail = await _run(detect_backends)
     default = next((k for k, v in avail.items() if v), None)
+    libvirt = None
+    if avail.get("libvirt"):
+        from polarix.vm.backends import LibvirtBackend
+
+        libvirt = await _run(LibvirtBackend().connection_report)
     return _wrap(
         {
             "available": avail,
             "default": default,
+            **({"libvirt": libvirt} if libvirt else {}),
             "install_hint": (
                 None
                 if default

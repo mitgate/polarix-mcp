@@ -57,6 +57,16 @@ Estado do projeto para quem pegar o próximo passo (humano ou agente).
 8. `llm.py`: `generate_desktop_steps()`; prompts viraram funções testáveis.
 9. `telemetry._polarix()` aceita `desktop=`.
 10. README: seções de desktop/VM, cenários e KPIs, healing, fallbacks de canvas.
+17. **Driver `appium`** (1.7.0): `polarix/desktop/appium_driver.py` — contrato `DesktopDriver`
+    sobre W3C WebDriver (urllib, sem dependências) para iOS (XCUITest) e Android (UiAutomator2).
+    Janela = app em primeiro plano (bundleId / package/Activity); `parse_source` lê o page
+    source dos dois (Android por tag de classe, iOS por `XCUIElementType*`, name→auto_id,
+    label→title); clique por elemento (xpath por resource-id/content-desc/text ou name/label)
+    com fallback para toque W3C no centro; `type` via `mobile: type`/`mobile: keys`; `shell`
+    só Android (`mobile: shell`, exige `--relaxed-security`); iOS sem `shell` e sem `{BACK}`.
+    Alvo `{"driver": "appium", "server_url", "capabilities"}`; env `POLARIX_APPIUM_URL`/`_CAPS`.
+    **Nunca falou com um servidor Appium real** — só o dublê roteirizado dos testes. Primeiro
+    teste real: Appium 2 + `appium driver install xcuitest` num Mac, Calculadora do Simulator.
 16. **Ambientes e política de ciclo de vida** (1.6.0): `polarix/desktop/environments.py` +
     `polarix/tools/environments.py` (6 tools `environment_*`). Ambiente = alvo + passos
     `install`/`uninstall`/`reset` + `variables`; três camadas (infra = VM/snapshot, sistema =
@@ -120,10 +130,13 @@ Estado do projeto para quem pegar o próximo passo (humano ou agente).
    chamada HTTP. Não testado com teclado real.
 5. **Driver `fake` é por chamada** no `get_driver()`: para estado persistente no Linux,
    suba o agente com `--driver fake` e use `remote`.
-6. **Hipervisor nesta máquina**: KVM habilitado mas libvirt/virsh não instalado; `adb`
-   existe. `vm_backends()` mostra o que há. Sugestão:
-   `sudo dnf install libvirt qemu-kvm virt-install virt-viewer`.
-7. **Outros guests**: Linux (AT-SPI), macOS (Accessibility) e Android (uiautomator2)
+6. **Hipervisor nesta máquina** (revisto 2026-10-03): libvirt 11, qemu-kvm, virt-install,
+   virsh, OVMF e swtpm JÁ estão instalados; `/dev/kvm` acessível; `adb` presente. O que falta
+   exige sudo: `systemctl enable --now virtqemud.socket virtnetworkd.socket virtstoraged.socket`
+   e `usermod -aG libvirt leandro` (daemon inativo e desabilitado, usuário fora do grupo).
+   Sem isso, `qemu:///system` falha; `qemu:///session` já funciona sem root
+   (`POLARIX_LIBVIRT_URI`). `vm_backends()` agora devolve `libvirt.reachable` e `hints`.
+7. **Outros guests**: Linux (AT-SPI) e macOS desktop (Accessibility)
    implementariam o mesmo contrato `DesktopDriver` no mesmo agente.
 8. **Segurança do agente**: token em header, HTTP sem TLS — só para a rede interna da VM.
 9. **Compatibilidade**: telemetria mudou de `_polaris` para `_polarix`.

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "polarix-mcp"
-version = "1.6.1"
+version = "1.7.0"
 description = "Browser and desktop automation MCP server — Map First architecture for AI agents"
 readme = "README.md"
 license = { text = "MIT" }
