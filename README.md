@@ -506,6 +506,9 @@ Add to your MCP settings:
 | `POLARIX_MACROS_DIR` | `$TMP/polarix_macros` | Where recorded/saved macros live |
 | `POLARIX_REPORTS_DIR` | `$TMP/polarix_reports` | Where scenario/suite reports (JSON + HTML) are written |
 | `POLARIX_VISION_MODEL` | `BROWSER_USE_MODEL` | Multimodal model for `click_vision`, `assert vision`, `desktop_vision_*` |
+| `POLARIX_TARGETS_FILE` | `~/.config/polarix/targets.json` | Named targets (which machine / OS runs a sequence) |
+| `POLARIX_TARGETS` | — | Same JSON inline; merged over the file |
+| `POLARIX_TARGET` | — | Default target name when a tool gets none |
 | `POLARIX_METRICS_DB` | `$TMP/polarix_metrics.sqlite` | SQLite ledger every tool call is recorded in |
 | `POLARIX_METRICS` | `on` | `off` disables recording |
 | `POLARIX_DESKTOP_FAKE_APP` | — | JSON fixture for the simulated app (dev/tests) |
@@ -553,6 +556,91 @@ POLARIX_DESKTOP_DRIVER=remote
 POLARIX_DESKTOP_AGENT_URL=http://192.168.122.15:8020     # vm_guest_ip tells you this
 POLARIX_AGENT_TOKEN=SECRET
 ```
+
+### Mapping the whole application — `desktop_map_app`
+
+`desktop_map_window` maps the window you are looking at; `desktop_map_app` maps
+everything the application can reach from it — the desktop twin of
+`browser_map_site`. It opens every menu item, every button whose title ends with "…"
+and every tab; each new window or dialog is mapped, crawled in turn (down to
+`max_depth`) and closed with Cancel/Close/Escape — never with OK or Save. Items that
+mean *exit* are never selected; items that look destructive (delete, remove,
+uninstall, format, reset…) are skipped unless `allow_destructive=True`. A window
+budget and a time budget bound the crawl.
+
+```python
+desktop_map_app('{"title_re": ".*Editor.*"}')        # unedited output from the simulated app
+```
+```json
+{"root": "Sem título - Editor",
+ "windows": [
+   {"title": "Sem título - Editor", "depth": 0, "reached_by": [], "control_count": 6,
+    "control_index": {"Edit": [...], "MenuBar": [...], "MenuItem": [...], "StatusBar": [...]}, "menus": [...]},
+   {"title": "Salvar como", "depth": 1, "control_count": 5,
+    "reached_by": [{"action": "menu", "path": "Arquivo->Salvar", "label": "Salvar"}],
+    "control_index": {"Button": [{"title": "Salvar", "auto_id": "1"}, {"title": "Cancelar", "auto_id": "2"}],
+                      "ComboBox": [...], "Edit": [{"title": "Nome do arquivo", "auto_id": "1001"}], "Text": [...]}}],
+ "edges": [{"from": "Sem título - Editor", "via": {"action": "menu", "path": "Arquivo->Salvar"}, "to": "Salvar como"}],
+ "skipped": [{"window": "Sem título - Editor", "via": {"action": "menu", "path": "Arquivo->Sair"}, "reason": "exit"}],
+ "feature_index": [
+   {"kind": "dialog", "name": "Salvar como", "reach": [{"action": "menu", "path": "Arquivo->Salvar"}]},
+   {"kind": "menu", "name": "Arquivo->Novo", "window": "Sem título - Editor", "reach": [...]},
+   {"kind": "button", "name": "Salvar", "window": "Salvar como", "locator": {"auto_id": "1"},
+    "reach": [{"action": "menu", "path": "Arquivo->Salvar"}]}, "…"],
+ "coverage": {"windows_mapped": 2, "dialogs_opened": 1, "controls_total": 11, "menu_paths": 7,
+              "features_by_kind": {"menu": 7, "edit": 2, "dialog": 1, "combobox": 1, "button": 2},
+              "actions_skipped": 1, "budget_exhausted": false, "duration_ms": 2},
+ "problems": []}
+```
+
+Every entry in `feature_index` carries `reach` — the steps that get you there — so
+the planner, a scenario or a person can go straight to any feature. The map is also
+recorded in the metrics ledger: run it again after an application update and
+`metrics_errors` shows the identifiers that disappeared (`map_drift`).
+
+What a crawl cannot see: features that only exist with data loaded (open a document
+first, then crawl), context menus (right-click), keyboard-only commands with no menu
+entry, and custom-drawn canvases. On a real Windows application start with
+`max_depth=1`, `max_windows=10` and a `time_budget` you can afford; raise them once
+the first map looks right.
+
+### Choosing where it runs — named targets
+
+A sequence runs on a **target**: a machine with a Polarix agent (or the simulator).
+Two are built in — `fake` (simulated editor, any OS) and `local` (the host, Windows
+only). Register your VMs once:
+
+```json
+// ~/.config/polarix/targets.json   (or the same JSON in POLARIX_TARGETS)
+{
+  "win11":  {"driver": "remote", "agent_url": "http://192.168.122.15:8020", "token": "SECRET",
+             "os": "windows", "vm": {"backend": "libvirt", "name": "win11-lab", "snapshot": "clean"}},
+  "win10":  {"driver": "remote", "agent_url": "http://192.168.122.16:8020", "token": "SECRET",
+             "os": "windows"},
+  "ubuntu": {"driver": "remote", "agent_url": "http://192.168.122.20:8020", "os": "linux"}
+}
+```
+
+Then pick the target per call, per scenario, or as a matrix:
+
+```python
+desktop_targets()                                                # what exists, which is default
+desktop_map_window('{"title_re": ".*Calc.*"}', target="win11")   # any desktop tool takes target
+desktop_run_scenario("scenarios/calc-add.yaml", target="win10")  # overrides the scenario's own
+```
+
+```yaml
+# inside a scenario
+target: win11                 # one machine
+# or
+targets: [win11, win10]       # one run per target → calc-add@win11, calc-add@win10
+```
+
+`POLARIX_TARGET=win11` makes a target the default. Without any target, the process-wide
+`POLARIX_DESKTOP_DRIVER` / `POLARIX_DESKTOP_AGENT_URL` apply. The operating system of a
+target is the operating system of its guest: today only the Windows guest driver exists;
+a Linux (AT-SPI), macOS or Android guest would implement the same `DesktopDriver` behind
+the same agent, and the `ubuntu` entry above would start working unchanged.
 
 ### Recommended desktop workflow
 
@@ -1130,6 +1218,12 @@ Returns: `{ window, control_count, controls: [{control_type, title, auto_id, pat
 
 **`desktop_explore_menus`** — Opens every top-level menu and records the items it reveals.
 Returns: `{ menus: [{title, items}], menu_paths: ["Top->Item", ...] }`
+
+**`desktop_map_app`** — Crawls the whole application: every menu item, "…" button and tab; each dialog is mapped and closed (Cancel/Escape, never OK). Exit and destructive items are skipped.
+Returns: `{ root, windows: [{title, depth, reached_by, control_count, control_index, menus}], edges: [{from, via, to}], effects, tabs, skipped, feature_index: [{kind, name, window, reach, locator?, shortcut?}], coverage, problems }`
+
+**`desktop_targets`** — Named targets a sequence can run on (built-in `fake`, `local`; plus `targets.json` / `POLARIX_TARGETS`).
+Returns: `{ targets: [{name, driver, os, description, default, agent_url?, token_set?, vm?}], default, targets_file }`
 
 ### DESKTOP — execution
 

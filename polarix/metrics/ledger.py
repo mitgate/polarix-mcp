@@ -247,11 +247,32 @@ def _ids_desktop_explore_menus(data: dict) -> tuple[int, list[str]]:
     return len(paths), [f"menu:{p}" for p in paths]
 
 
+def _ids_desktop_map_app(data: dict) -> tuple[int, list[str]]:
+    """Whole-application map: every window's identifiers plus menu paths and dialogs."""
+    identifiers: list[str] = []
+    elements = 0
+    for w in data.get("windows", []) or []:
+        elements += int(w.get("control_count") or 0)
+        if w.get("depth", 0) > 0 and w.get("title"):
+            identifiers.append(f"dialog:{w['title']}")
+        for entries in (w.get("control_index") or {}).values():
+            for e in entries:
+                if e.get("auto_id"):
+                    identifiers.append(f"id:{e['auto_id']}")
+                elif e.get("title"):
+                    identifiers.append(f"{w.get('title')}/{e['title']}")
+    for f in data.get("feature_index", []) or []:
+        if f.get("kind") == "menu":
+            identifiers.append(f"menu:{f['name']}")
+    return elements, identifiers
+
+
 _MAP_EXTRACTORS = {
     "browser_map_site": _ids_browser_map_site,
     "browser_explore_page": _ids_browser_explore_page,
     "desktop_map_window": _ids_desktop_map_window,
     "desktop_explore_menus": _ids_desktop_explore_menus,
+    "desktop_map_app": _ids_desktop_map_app,
 }
 _STABLE_PREFIXES = ("qa", "id", "input", "menu")
 

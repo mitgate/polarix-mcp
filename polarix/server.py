@@ -144,11 +144,20 @@ browser_get_help()
  DESKTOP — native application windows (guest VM or local Windows)
 ════════════════════════════════════════════════════════════════
 
-Target selection (environment of the Polarix server):
+Choosing WHERE a sequence runs (which machine / operating system):
+  Every desktop_* tool takes `target`, a name from desktop_targets(). Built-ins: `fake`
+  (simulated editor, any OS) and `local` (this host, Windows only). Register VMs in
+  POLARIX_TARGETS_FILE (~/.config/polarix/targets.json) or POLARIX_TARGETS (inline JSON):
+    {"win11": {"driver": "remote", "agent_url": "http://192.168.122.15:8020", "token": "...",
+               "os": "windows", "vm": {"backend": "libvirt", "name": "win11-lab", "snapshot": "clean"}}}
+  Scenarios take `target: "win11"` or `targets: ["win11", "win10"]` (one run per target).
+  POLARIX_TARGET sets the default; without any target the process-wide driver applies:
   POLARIX_DESKTOP_DRIVER=remote + POLARIX_DESKTOP_AGENT_URL=http://<guest-ip>:8020
       → drives a Polarix agent running inside the VM (python -m polarix.desktop.agent)
   POLARIX_DESKTOP_DRIVER=auto   → pywinauto, when Polarix itself runs on Windows
   POLARIX_DESKTOP_DRIVER=fake   → simulated Notepad-like app, any OS (dev/tests)
+  Only a Windows guest driver exists today; a Linux/macOS/Android guest needs its own
+  driver behind the same agent contract.
 
 Window locator (every desktop_* tool): JSON {"title_re": ".*CadApp.*"} | {"process": "x.exe"} |
 {"handle": 123} | {"title": "..."} — or a plain title substring.
@@ -161,6 +170,11 @@ KNOWLEDGE
       UI Automation control tree + control_index grouped by type + menu bar. The desktop "site map".
   desktop_explore_menus(window_json, max_items)
       Opens every top-level menu and returns the items it reveals as "Top->Item" paths.
+  desktop_map_app(window_json, max_depth, max_windows, include_tabs, allow_destructive)
+      The whole application, like browser_map_site: opens every menu item, "…" button and
+      tab, maps each dialog that appears and closes it (Cancel/Escape, never OK). Returns
+      windows, edges (how each dialog is reached), feature_index and coverage. Exit and
+      destructive items are skipped. USE: first contact with an unknown application.
 
 EXECUTION
   desktop_launch(path, args, title_re, wait_seconds)   start the app, returns window locator

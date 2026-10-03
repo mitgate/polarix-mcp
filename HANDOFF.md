@@ -55,6 +55,13 @@ Estado do projeto para quem pegar o próximo passo (humano ou agente).
 8. `llm.py`: `generate_desktop_steps()`; prompts viraram funções testáveis.
 9. `telemetry._polarix()` aceita `desktop=`.
 10. README: seções de desktop/VM, cenários e KPIs, healing, fallbacks de canvas.
+13. **Alvos nomeados** (1.4.0): `polarix/desktop/targets.py` — `targets.json`/`POLARIX_TARGETS`
+    (nome → driver, agent_url, token, os, vm); `target` em todas as tools desktop, `target`/
+    `targets` (matriz) nos cenários, `POLARIX_TARGET` como padrão, `desktop_targets`.
+14. **`desktop_map_app`** (1.4.0): crawler BFS da aplicação (menus, botões "…", abas), mapeia
+    e fecha cada diálogo (Cancel/Close/Escape, nunca OK), reabre pelo caminho registrado para
+    explorar em profundidade, pula sair/destrutivo, orçamento de janelas e tempo; `feature_index`
+    + `coverage`; entra no ledger como mapa (drift da aplicação inteira).
 12. **Passo `shell` e `desktop_run_command`** (1.3.0): comando no alvo (no guest, via
     agente) com código de saída esperado — instalar/desinstalar (`winget`), fixtures,
     limpeza — para setup/teardown de cenários. `run_command` entrou no contrato
@@ -91,6 +98,9 @@ Estado do projeto para quem pegar o próximo passo (humano ou agente).
    implementariam o mesmo contrato `DesktopDriver` no mesmo agente.
 8. **Segurança do agente**: token em header, HTTP sem TLS — só para a rede interna da VM.
 9. **Compatibilidade**: telemetria mudou de `_polaris` para `_polarix`.
+11. **Crawler**: só testado no app simulado. Em apps reais, menus `uia` com submenus em
+    cascata, diálogos modais que bloqueiam o foco e janelas com títulos iguais (chave é o
+    título) são os pontos frágeis; `action_wait` curto demais perde diálogos lentos.
 10. **Métricas**: limiares (2 pp em taxas, 10 % em durações, mínimo 5 amostras) e pesos do
     health score são chutes razoáveis — calibrar com dados reais. O ledger cresce sem
     poda; `metrics_export` + apagar o SQLite é a limpeza por enquanto. Drift usa só os
