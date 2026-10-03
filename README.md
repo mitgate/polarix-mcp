@@ -409,6 +409,9 @@ software under test, plus variables the scenarios can use:
 }
 ```
 
+A built-in `sim` environment (target `fake`, the simulated editor) is always there, so
+`environment_plan("sim")` works on a fresh install with no VM at all.
+
 Three layers, four policies, one switch:
 
 | Layer | What it is | Rebuilt by |

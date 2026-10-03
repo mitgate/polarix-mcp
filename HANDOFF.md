@@ -68,7 +68,8 @@ Estado do projeto para quem pegar o próximo passo (humano ou agente).
     ganharam `matrix: {var: [...]}` com substituição `${var}`/`${var.field}` (a matriz pode
     apontar para uma lista das variáveis do ambiente, ex. `${browsers}`) — é assim que o
     mesmo teste roda em vários navegadores instalados na mesma VM. Instruções do servidor
-    têm a seção ENVIRONMENTS com a regra de perguntar.
+    têm a seção ENVIRONMENTS com a regra de perguntar. 1.6.1: ambiente embutido `sim` (alvo
+    `fake`), sobrescrevível por config, para testar o fluxo sem VM.
 15. **Driver Android** (1.5.0): `polarix/desktop/android_driver.py` — contrato `DesktopDriver`
     sobre `adb` + `uiautomator dump`, sem agente no aparelho (roda onde o adb roda: emulador
     local, `adb connect`, device farm). Janela = activity em primeiro plano; `title` =
