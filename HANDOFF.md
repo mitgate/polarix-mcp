@@ -57,6 +57,18 @@ Estado do projeto para quem pegar o próximo passo (humano ou agente).
 8. `llm.py`: `generate_desktop_steps()`; prompts viraram funções testáveis.
 9. `telemetry._polarix()` aceita `desktop=`.
 10. README: seções de desktop/VM, cenários e KPIs, healing, fallbacks de canvas.
+18. **Instalador e doctor** (1.8.0): `install.sh` (Linux; dnf/apt/pacman/zypper; perfis
+    `--desktop` libvirt+QEMU+OVMF+swtpm com sockets e grupo, `--android` adb, `--appium`
+    Node+appium+uiautomator2, `--service` unidade systemd --user, `--llm`; `--yes`,
+    `--no-sudo`, `--skip-browser`; idempotente; cria `.venv`, `.env` comentado e
+    `~/.config/polarix/*.example.json`; nunca roda sudo em silêncio). `polarix/doctor.py`
+    (`python -m polarix.doctor [--json] [grupo…]`, exit 1 se core faltar) e tool
+    `polarix_doctor` — checks com status ok/warn/missing/optional e `fix`; `layers` diz
+    quais camadas o host oferece. `start.sh` prefere `.venv` quando ela importa mcp+playwright.
+    Testado num clone com HOME falso (`--no-sudo --skip-browser --android --appium`): venv,
+    appium 3 + uiautomator2 e exemplos saíram certos — e pegou que `mcp>=1.0.0` sem teto
+    puxava o mcp 2.x (FastMCP renomeado, servidor não sobe): pino `mcp[cli]<2` no pyproject
+    e check `python:mcp 1.x API` no doctor.
 17. **Driver `appium`** (1.7.0): `polarix/desktop/appium_driver.py` — contrato `DesktopDriver`
     sobre W3C WebDriver (urllib, sem dependências) para iOS (XCUITest) e Android (UiAutomator2).
     Janela = app em primeiro plano (bundleId / package/Activity); `parse_source` lê o page
@@ -155,6 +167,8 @@ Estado do projeto para quem pegar o próximo passo (humano ou agente).
 ## Como rodar
 
 ```bash
+./install.sh --all                           # primeira vez: venv, Chromium, libvirt, adb, appium, .env, doctor
+python3.11 -m polarix.doctor                 # o que funciona neste host e como consertar
 ./start.sh                                   # servidor MCP em http://127.0.0.1:8016/mcp
 python3.11 -m pytest tests -q                # suíte (driver fake)
 POLARIX_DESKTOP_DRIVER=fake ./start.sh       # desktop_* contra o app simulado

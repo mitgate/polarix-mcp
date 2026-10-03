@@ -1,4 +1,4 @@
-"""Utility tools — screenshot, get_page_content, get_help."""
+"""Utility tools — screenshot, get_page_content, get_help, doctor."""
 
 from __future__ import annotations
 
@@ -112,6 +112,45 @@ async def browser_get_page_content(
     return _wrap(
         {"text": text, "chars": len(text), "truncated": truncated},
         _polarix("browser_get_page_content", t0, browser=bstate),
+    )
+
+
+@mcp.tool()
+async def polarix_doctor(groups: Optional[str] = None) -> str:
+    """Check this host: what works, what is missing, and the command that fixes it.
+
+    Call it FIRST when a tool fails with "not found", "unreachable", "unavailable" or
+    when deciding which layers (browser, desktop VM, android, appium) can be used here.
+
+    Args:
+        groups: Comma-separated subset of core, llm, vm, android, appium, config, server
+            (default: all).
+
+    Returns:
+        JSON: { host, healthy, core_missing, counts, layers: {browser, desktop_vm, android, appium},
+                checks: [{name, group, status: ok|warn|missing|optional, detail, fix?}],
+                fixes: [{name, fix}], _polarix }
+        `fixes` are shell commands or settings to hand to the person — do not run sudo
+        commands on their behalf.
+    """
+    from polarix.doctor import GROUPS, diagnose
+
+    t0 = _start()
+    chosen = None
+    if groups:
+        chosen = [g.strip() for g in groups.split(",") if g.strip()]
+        unknown = [g for g in chosen if g not in GROUPS]
+        if unknown:
+            return _wrap(
+                {
+                    "success": False,
+                    "error": f"unknown groups {unknown}; use {list(GROUPS)}",
+                },
+                _polarix("polarix_doctor", t0),
+            )
+    report = await asyncio.to_thread(diagnose, chosen)
+    return _wrap(
+        report, _polarix("polarix_doctor", t0, params={"groups": chosen or "all"})
     )
 
 

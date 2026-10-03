@@ -498,87 +498,93 @@ combine both and you get every browser on every machine.
 
 | Requirement | Minimum |
 |-------------|---------|
+| Host | Linux (Fedora, Debian/Ubuntu, Arch, openSUSE) — the MCP server always runs here; macOS works for the browser layer |
 | Python | 3.11 or higher |
-| Operating system | Linux or macOS for the Polarix server; a Windows guest (VM) for `desktop_*` |
-| Internet access | Required (Playwright downloads Chromium) |
-| LLM API key | At least one of: OpenAI or Anthropic |
-| Hypervisor (optional) | libvirt/KVM (`virsh`), VirtualBox (`VBoxManage`) or Android SDK (`adb`) for `vm_*` |
-
----
-
-## Python Dependencies
-
-```
-browser-use>=0.2.0
-playwright>=1.44.0
-mcp[server]>=1.0.0
-```
+| Internet access | Required once (Playwright downloads Chromium) |
+| LLM API key | Optional: OpenAI or Anthropic for `browser_run_task`, `*_auto_sequence` and vision |
+| Desktop guests (optional) | KVM + libvirt (`virsh`) or VirtualBox for Windows/Linux VMs |
+| Android (optional) | `adb` — a local emulator (needs KVM), a device, or `adb connect` |
+| iPhone (optional) | an Appium server with XCUITest **on a Mac**; Polarix talks to it over HTTP |
 
 ---
 
 ## Installation
 
-### 1. Clone the repository
+One script, Linux host, idempotent. It creates `.venv`, installs the package and
+Chromium, writes a commented `.env` and example `targets` / `environments` files, and
+ends with the doctor — a list of what works, what is missing and the exact command that
+fixes each item.
 
 ```bash
-git clone https://github.com/your-username/polarix-mcp.git
+git clone https://github.com/mitgate/polarix-mcp.git
 cd polarix-mcp
+./install.sh                      # browser automation only
+./install.sh --desktop            # + KVM/libvirt for Windows/Linux guest VMs
+./install.sh --android            # + adb
+./install.sh --appium             # + Node, Appium server, UiAutomator2 driver
+./install.sh --all --service      # everything, plus a systemd --user unit started at login
+./install.sh --llm openai         # also the OpenAI SDK (or anthropic | all)
 ```
 
-### 2. Create and activate a Python 3.11+ virtual environment
+Flags: `--yes` (no questions), `--no-sudo` (system packages are listed, not installed),
+`--skip-browser` (offline, or Chromium already present), `--python PATH`. Run it again
+after `git pull`.
 
-```bash
-python3.11 -m venv .venv
-source .venv/bin/activate          # Linux / macOS
-# .venv\Scripts\activate           # Windows
+```
+[polarix] Doctor
+Polarix doctor — Linux 6.19 (x86_64)
+  [ok ] core     python                 3.11.15 at .venv/bin/python
+  [ok ] core     python:playwright      present
+  [ok ] core     chromium               chromium-1234
+  [ok ] llm      llm keys               OPENAI_API_KEY=set, ANTHROPIC_API_KEY=unset; model=gpt-4o-mini
+  [ok ] vm       kvm                    /dev/kvm present
+  [warn] vm       libvirt                virsh at /usr/bin/virsh; qemu:///system NOT reachable
+          fix: sudo systemctl enable --now virtqemud.socket virtnetworkd.socket virtstoraged.socket && sudo usermod -aG libvirt $USER | or POLARIX_LIBVIRT_URI=qemu:///session
+  [ok ] android  adb                    /usr/bin/adb; devices: ['emulator-5554']
+  [opt ] appium   appium server          http://127.0.0.1:4723 not answering
+          fix: start it with `appium` (or set POLARIX_APPIUM_URL to the Mac that runs it)
+  [warn] config   targets                2 defined (fake, local); no file at ~/.config/polarix/targets.json, built-ins only
+          fix: cp ~/.config/polarix/targets.example.json ~/.config/polarix/targets.json and edit
+  [ok ] server   mcp port               127.0.0.1:8016 listening
+layers: browser=yes, desktop_vm=no, android=yes, appium=no
+healthy
 ```
 
-### 3. Install Python packages
+The same report is an MCP tool, `polarix_doctor`, so an agent can find out which layers
+this host offers before choosing a target — and `python -m polarix.doctor [--json] [group…]`
+from the shell. The installer never runs `sudo` silently: it asks, or with `--no-sudo`
+prints the command for you.
+
+### What the installer sets up
+
+| Step | Result |
+|---|---|
+| Python | finds 3.11+ (installs it with the distro's package manager if asked), creates `.venv`, `pip install -e .` |
+| Chromium | `playwright install chromium` (+ system libraries on apt hosts, or the Fedora equivalents) |
+| `--desktop` | libvirt, QEMU/KVM, virt-install, virt-viewer, OVMF, swtpm; enables the daemon sockets and adds you to `libvirt` |
+| `--android` | `adb` from the distro, or detects `~/Android/Sdk/platform-tools/adb` |
+| `--appium` | Node 18+, `npm install -g appium`, `appium driver install uiautomator2` (iOS needs the Mac) |
+| config | `.env` template; `~/.config/polarix/targets.example.json` and `environments.example.json` |
+| `--service` | `~/.config/systemd/user/polarix-mcp.service` running `start.sh`, enabled and started |
+
+### Starting the server
 
 ```bash
-pip install --upgrade pip
-pip install browser-use playwright mcp
+./start.sh                         # uses .venv when present; http://127.0.0.1:8016/mcp
+systemctl --user status polarix-mcp   # when installed with --service
 ```
 
-### 4. Install the Chromium browser
+`.env` (git-ignored) holds the keys and drivers; the defaults are:
 
 ```bash
-playwright install chromium
-```
-
-### 5. Set environment variables
-
-Create a `.env` file in the project root (it is git-ignored):
-
-```bash
-# Required: at least one LLM key
-OPENAI_API_KEY=sk-...
-ANTHROPIC_API_KEY=sk-ant-...
-
-# Optional overrides (these are the defaults)
-BROWSER_USE_MODEL=gpt-4o-mini       # LLM for browser_run_task
-BROWSER_HEADLESS=true               # false = show the browser window
-POLARIX_SESSIONS_DIR=/tmp/polarix_sessions
 MCP_HOST=127.0.0.1
 MCP_PORT=8016
 MCP_TRANSPORT=streamable-http
+BROWSER_USE_MODEL=gpt-4o-mini
+BROWSER_HEADLESS=true
+POLARIX_DESKTOP_DRIVER=fake        # auto | remote | android | appium | fake
+POLARIX_VM_BACKEND=auto
 ```
-
-### 6. Start the server
-
-```bash
-./start.sh
-```
-
-Or directly:
-
-```bash
-source .venv/bin/activate
-source .env  # or export the variables manually
-python browser_python_mcp.py
-```
-
-The server listens on `http://127.0.0.1:8016/mcp` by default.
 
 ---
 
@@ -1454,6 +1460,9 @@ Returns: `{ errors, warnings, info, all_messages }`
 **`browser_get_page_content`** — Visible text up to 20,000 characters.
 
 **`browser_get_help`** — Returns full documentation as a string.
+
+**`polarix_doctor`** — Host check: what works, what is missing, the command that fixes it; which layers (browser, desktop VM, android, appium) are usable here.
+Returns: `{ host, healthy, core_missing, counts, layers, checks: [{name, group, status, detail, fix?}], fixes }`
 
 ### DESKTOP — knowledge
 

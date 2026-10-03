@@ -291,6 +291,14 @@ METRICS — are the commands improving or getting worse?
   tests (scenario/assertion pass, flakiness) · speed (p50/p95, wait share).
   USE: after a batch of runs, call metrics_summary; act on `regressions` first.
 
+HOST CHECK — polarix_doctor(groups)
+  What this host can do: Python/Chromium (browser), KVM+libvirt or VirtualBox (desktop VM),
+  adb (android), appium server (mobile over WebDriver), config files, MCP port. Each check
+  carries `status` (ok · warn · missing · optional) and a `fix`. Call it first when a tool
+  says "not found" / "unreachable", and before choosing a target on an unknown host. Hand
+  sudo fixes to the person; never run them yourself. Setup is `./install.sh [--desktop
+  --android --appium --service]` on the Linux host.
+
 RECOMMENDED DESKTOP WORKFLOW
   0. environment_list() → if the suite runs in an environment, environment_plan(name) and
      ask the person which policy (fresh / reinstall / reset / keep, keep_after)
