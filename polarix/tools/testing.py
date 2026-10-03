@@ -18,7 +18,7 @@ from polarix.desktop.scenarios import (
     load_scenarios,
     reports_dir,
     run_scenario,
-    expand_targets,
+    expand_matrix,
     run_suite,
     save_report,
     scenario_from_macro,
@@ -143,7 +143,10 @@ async def desktop_run_suite(
 
     Args:
         source: Directory of .json/.yaml scenario files, one file holding a list
-            (or {"scenarios": [...]}), or inline JSON/YAML.
+            (or {"scenarios": [...]}), or inline JSON/YAML. A scenario with
+            `targets: [...]` or `matrix: {"var": [values]}` runs once per combination,
+            with `${var}` / `${var.field}` substituted in its steps. To install/reset
+            the software first, use environment_run instead.
         name: Suite name used in the report file names (default: "suite").
         tags_json: JSON array of tags — only scenarios carrying one of them run.
         restore_vm: Restore each scenario's vm.snapshot before it runs (default: False).
@@ -159,7 +162,7 @@ async def desktop_run_suite(
     try:
         tags = json.loads(tags_json) if tags_json else None
         scenarios = [
-            validate_scenario(sc) for sc in expand_targets(load_scenarios(source))
+            validate_scenario(sc) for sc in expand_matrix(load_scenarios(source))
         ]
         if not scenarios:
             raise ValueError("no scenarios found")

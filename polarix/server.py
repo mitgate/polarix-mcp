@@ -234,6 +234,31 @@ TESTING — scenarios, assertions, KPIs
   desktop_scenario_from_macro(macro_name)   recorded macro → scenario with default asserts
   desktop_report_list()                     saved reports and their KPIs
 
+ENVIRONMENTS — how the test environment lives between runs (ASK, never guess)
+  An environment = target (VM / device) + `install` / `uninstall` / `reset` steps +
+  `variables`. Three layers: infrastructure (the VM and its snapshot), system (what is
+  installed: the app under test, browsers, fixtures), state (the app's data).
+  environment_list()                         configured environments, which are up, policies
+  environment_status(name)                   prepared? since when, last policy, runs
+  environment_plan(name, policy, keep_after) what a run would do — or the question to ask
+  environment_prepare(name, policy, keep_after)   bring it to that state, no tests
+  environment_run(name, source, policy, keep_after, variables_json)
+      prepare → run suite (scenarios get ${var} from environment.variables) → keep or tear down
+  environment_teardown(name, mode)           uninstall · snapshot · both · none
+  Policies  fresh      restore snapshot, install, run      → testing the installer, clean room
+            reinstall  keep VM, uninstall + install, run  → new build of the same app
+            reset      keep VM + app, clear its data, run → regression on develop, no reinstall
+            keep       touch nothing, run                 → iterate quickly on click flows
+  keep_after=true leaves everything up for the next run (default); false uninstalls and
+  reverts the snapshot right after (one-shot).
+  RULE: when the person has not said how to treat the environment and it has no
+  default_policy, the tools answer {"needs_decision": true, "question", "options"}.
+  Show the options and ask — "reinstall only the app, rebuild everything, keep both, or
+  keep just the VM?" — then call again with `policy` and `keep_after`. Never pick for them.
+  Several browsers in one VM: install them in `install`, then give the scenario
+  matrix: {"browser": [{"name": "chrome", "path": "..."}, {"name": "firefox", "path": "..."}]}
+  and use ${browser.path} in `launch` — the suite runs it once per browser.
+
 CANVAS FALLBACKS — when the control tree has nothing (drawing areas)
   desktop_find_image(window_json, image, threshold)   OpenCV template match → window x,y
   desktop_vision_locate(window_json, description)     multimodal model → window x,y
@@ -261,7 +286,9 @@ METRICS — are the commands improving or getting worse?
   USE: after a batch of runs, call metrics_summary; act on `regressions` first.
 
 RECOMMENDED DESKTOP WORKFLOW
-  1. vm_snapshot_restore("win11-cadapp", "clean")  → known state
+  0. environment_list() → if the suite runs in an environment, environment_plan(name) and
+     ask the person which policy (fresh / reinstall / reset / keep, keep_after)
+  1. vm_snapshot_restore("win11-cadapp", "clean")  → known state (environment_prepare does it)
   2. vm_guest_ip("win11-cadapp") → vm_agent_check("http://<ip>:8020")
   3. desktop_launch("C:/Program Files/CadApp/CadApp.exe")   (or desktop_list_windows)
   4. desktop_map_window('{"title_re": ".*CadApp.*"}') → read control_index and menus
