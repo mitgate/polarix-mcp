@@ -88,6 +88,15 @@ class DesktopDriver(Protocol):
 
     def control_from_point(self, x: int, y: int) -> Optional[Control]: ...
 
+    def run_command(
+        self, command: str, cwd: Optional[str] = None, timeout: float = 120.0
+    ) -> dict:
+        """Run a shell command on the target (install/uninstall, fixtures, cleanup).
+
+        Returns {exit_code, stdout, stderr, duration_ms}.
+        """
+        ...
+
 
 def get_driver(
     name: Optional[str] = None, backend: Optional[str] = None

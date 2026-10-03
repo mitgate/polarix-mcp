@@ -22,6 +22,9 @@ Actions
   snapshot      {max_depth?}
   screenshot    {}
   close         {force?}
+  shell         {command, cwd?, timeout?, expect_exit_code?}   (runs on the target;
+                install/uninstall, fixtures, cleanup — fails unless the exit code matches,
+                default 0; expect_exit_code null accepts any)
 
 Locator healing: when a locator matches nothing, the runner tries the
 `_recorded`/`fallback` hint (title + control_type), then a fuzzy title match
@@ -515,6 +518,20 @@ def run_desktop_steps(  # noqa: C901
                     raise AssertionError(
                         step.get("message")
                         or f"{outcome['kind']} failed: {outcome['detail']}"
+                    )
+
+            elif action == "shell":
+                outcome = driver.run_command(
+                    str(step["command"]),
+                    cwd=step.get("cwd"),
+                    timeout=float(step.get("timeout", 120.0)),
+                )
+                sr["result"] = outcome
+                expected = step.get("expect_exit_code", 0)
+                if expected is not None and outcome.get("exit_code") != int(expected):
+                    raise RuntimeError(
+                        f"command exited with {outcome.get('exit_code')} "
+                        f"(expected {expected}): {(outcome.get('stderr') or '')[-300:]}"
                     )
 
             elif action == "snapshot":

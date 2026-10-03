@@ -499,6 +499,20 @@ class FakeDesktopDriver:
             return _PNG_1X1
         return render_window(w, self.inventory({"title": w["title"]}, 32))
 
+    def run_command(
+        self, command: str, cwd: Optional[str] = None, timeout: float = 120.0
+    ) -> dict:
+        """Simulated shell: commands starting with 'false' or containing 'exit 1' fail."""
+        self._record("run_command", command=command, cwd=cwd)
+        text = command.strip()
+        failed = text.startswith("false") or "exit 1" in text
+        return {
+            "exit_code": 1 if failed else 0,
+            "stdout": "" if failed else f"simulated: {text}",
+            "stderr": "simulated failure" if failed else "",
+            "duration_ms": 1,
+        }
+
     def control_from_point(self, x: int, y: int) -> Optional[Control]:
         if self.active is None:
             return None

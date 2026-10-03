@@ -375,6 +375,39 @@ class PywinautoDriver:
         img.save(buf, format="PNG")
         return buf.getvalue()
 
+    def run_command(
+        self, command: str, cwd: Optional[str] = None, timeout: float = 120.0
+    ) -> dict:
+        """Run a shell command in the guest session (winget, copy, cleanup)."""
+        import subprocess
+
+        t0 = time.monotonic()
+        try:
+            proc = subprocess.run(  # noqa: S602 - the agent exists to run commands
+                command,
+                shell=True,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                cwd=cwd,
+                check=False,
+            )
+            exit_code, out, err = proc.returncode, proc.stdout, proc.stderr
+        except subprocess.TimeoutExpired as exc:
+            exit_code = -1
+            out = (
+                (exc.stdout or b"").decode(errors="replace")
+                if isinstance(exc.stdout, bytes)
+                else (exc.stdout or "")
+            )
+            err = f"timed out after {timeout}s"
+        return {
+            "exit_code": exit_code,
+            "stdout": (out or "")[-20_000:],
+            "stderr": (err or "")[-20_000:],
+            "duration_ms": round((time.monotonic() - t0) * 1000),
+        }
+
     def control_from_point(self, x: int, y: int) -> Optional[Control]:
         try:
             el = self.desktop.from_point(int(x), int(y))
