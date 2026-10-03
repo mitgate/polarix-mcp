@@ -7,6 +7,21 @@ Windows program) inside a virtual machine that Polarix controls through a small 
 agent and the hypervisor. Same philosophy on both: map the UI first, then act with
 real locators, then diff to prove what changed.
 
+**At a glance**
+
+* **Browser** — crawl a site into a selector map, intercept its API calls, run typed
+  step sequences or let the planner write them, diff pages, manage login sessions.
+* **Desktop** — the same for native windows: control-tree map, menu exploration,
+  typed steps, planner, tree diff, macro recording and replay.
+* **VM targets** — the desktop runs inside a VM Polarix controls: power, snapshots,
+  screenshots and raw keys through libvirt / VirtualBox / adb; a small agent in the
+  guest exposes the control tree.
+* **Testing** — assertions, scenarios in JSON/YAML, suites with KPIs and HTML reports.
+* **Canvas fallbacks** — template matching and multimodal vision for drawing areas.
+* **Locator healing** — scripts keep running when the application renames controls.
+* **Metrics** — every run feeds a ledger; indicators say whether the commands are
+  improving or getting worse, with trends, charts and a health score.
+
 Polarix gives the AI a complete mental map of any website before writing a single automation step.
 Named after the North Star: a fixed reference that sailors used to orient themselves before crossing
 any sea. Polarix gives the AI that same fixed point — a full structural map of selectors, API calls,
@@ -105,6 +120,206 @@ Shortcut (steps 1–6 in one call):
 
 When any AI agent connects to Polarix it receives a full capability briefing automatically
 via the FastMCP `instructions` parameter — no manual setup required.
+
+---
+
+## Desktop quick tour — Windows Calculator in five calls
+
+The target is a Windows VM running the Polarix agent (see *Desktop automation — VM
+targets*). The calls below are what an AI agent sends; responses are abbreviated to the
+fields that matter. Identifiers are the ones the Windows Calculator exposes through
+UI Automation.
+
+**1. Launch and get a window locator**
+
+```python
+desktop_launch("calc.exe", title_re=".*Calc.*")
+```
+```json
+{"window": {"title": "Calculator", "process": "CalculatorApp.exe", "pid": 7312, "handle": 329046},
+ "window_locator": {"handle": 329046}}
+```
+
+**2. Map it — the desktop "site map"**
+
+```python
+desktop_map_window('{"handle": 329046}')
+```
+```json
+{"control_count": 93,
+ "control_index": {
+   "Button": [
+     {"path": "0/3/2/0", "title": "Seven",  "auto_id": "num7Button"},
+     {"path": "0/3/2/1", "title": "Eight",  "auto_id": "num8Button"},
+     {"path": "0/3/3/4", "title": "Plus",   "auto_id": "plusButton"},
+     {"path": "0/3/3/5", "title": "Equals", "auto_id": "equalButton"},
+     {"path": "0/3/0/1", "title": "Clear",  "auto_id": "clearButton"}],
+   "Text": [{"path": "0/2/0", "title": "Display is 0", "auto_id": "CalculatorResults"}],
+   "MenuItem": [{"path": "0/0/0", "title": "Open Navigation", "auto_id": "TogglePaneButton"}]},
+ "menus": []}
+```
+
+Every interactive control now has a stable `auto_id`. That is the map; nothing below
+guesses a locator.
+
+**3. Say what you want — the planner writes the steps from the map**
+
+```python
+desktop_auto_sequence("compute 7 + 8 and read the result", '{"handle": 329046}')
+```
+```json
+{"generated_steps": [
+   {"action": "click", "locator": {"auto_id": "clearButton"}},
+   {"action": "click", "locator": {"auto_id": "num7Button"}},
+   {"action": "click", "locator": {"auto_id": "plusButton"}},
+   {"action": "click", "locator": {"auto_id": "num8Button"}},
+   {"action": "click", "locator": {"auto_id": "equalButton"}},
+   {"action": "wait_for", "locator": {"auto_id": "CalculatorResults"}},
+   {"action": "snapshot"}],
+ "execution": {"steps_total": 7, "steps_succeeded": 7,
+   "results": [{"step": 1, "action": "click", "success": true, "duration_ms": 412, "locator_match_count": 1}, "…"]}}
+```
+
+The LLM saw the `control_index` before planning, so every `auto_id` it used exists.
+The steps then ran deterministically — the model never touched the mouse.
+
+**4. Prove it — assert instead of trusting**
+
+```python
+desktop_execute_sequence('[
+  {"action": "assert", "kind": "text_contains",
+   "locator": {"auto_id": "CalculatorResults"}, "expected": "15"}]', '{"handle": 329046}')
+```
+```json
+{"steps_succeeded": 1, "results": [{"action": "assert", "success": true,
+  "result": {"kind": "text_contains", "passed": true,
+             "detail": {"expected": "15", "actual": "Display is 15", "matches": 1}}}]}
+```
+
+**5. Keep it — a scenario you can run every day**
+
+```yaml
+# scenarios/calc-add.yaml
+name: calc-add
+tags: [smoke, calculator]
+vm: { name: win11-lab, snapshot: clean }
+steps:
+  - { action: launch, path: calc.exe, title_re: ".*Calc.*" }
+  - { action: click, locator: { auto_id: clearButton } }
+  - { action: click, locator: { auto_id: num7Button } }
+  - { action: click, locator: { auto_id: plusButton } }
+  - { action: click, locator: { auto_id: num8Button } }
+  - { action: click, locator: { auto_id: equalButton } }
+  - { action: assert, kind: text_contains, locator: { auto_id: CalculatorResults }, expected: "15" }
+teardown:
+  - { action: close }
+```
+
+```python
+desktop_run_suite("scenarios/", name="nightly", restore_vm=True)
+metrics_summary("7d", target="CalculatorApp.exe")
+```
+
+---
+
+## Worked examples
+
+### Notepad — menus, dialogs and a typed document
+
+Classic Notepad exposes its text area as an `Edit` with `auto_id` `15`, and the Save
+As dialog is a standard Windows dialog (file name `1001`, Save button `1`).
+
+```python
+desktop_launch("notepad.exe")                                 # → {"title": "Untitled - Notepad", ...}
+desktop_explore_menus('{"title_re": ".*Notepad"}')
+# → menu_paths: ["File->New", "File->Open...", "File->Save", "File->Save As...", "Edit->Undo", ...]
+
+desktop_execute_sequence('[
+  {"action": "set_text", "locator": {"auto_id": "15"}, "value": "Meeting notes\\n- map first\\n- then act"},
+  {"action": "menu", "path": "File->Save As..."},
+  {"action": "wait_for", "window": {"title_re": ".*Save As.*"}},
+  {"action": "set_text", "locator": {"auto_id": "1001"}, "value": "notes.txt"},
+  {"action": "click", "locator": {"auto_id": "1"}},
+  {"action": "wait_for", "window": {"title_re": ".*Notepad"}},
+  {"action": "assert", "kind": "window_title_contains", "expected": "notes.txt"}
+]', '{"title_re": ".*Notepad"}')
+```
+
+`wait_for window` also switches the current window, so the two `set_text` steps target
+different windows without any extra bookkeeping.
+
+### Paint — when the interesting part is not in the tree
+
+The canvas of Paint is custom-drawn: UI Automation sees the ribbon, not the pixels.
+Mix the two layers — tree for the ribbon, pixels for the canvas.
+
+```python
+desktop_launch("mspaint.exe")
+desktop_map_window('{"title_re": ".*Paint"}')          # ribbon buttons have titles; canvas is a bare Pane
+
+desktop_execute_sequence('[
+  {"action": "click_image", "image": "crops/rectangle-tool.png", "threshold": 0.9},   # ribbon icon, by crop
+  {"action": "click", "x": 200, "y": 300},                                            # canvas: coordinates
+  {"action": "click", "x": 500, "y": 450},
+  {"action": "wait_idle"},
+  {"action": "assert", "kind": "vision", "expectation": "a rectangle is drawn on the white canvas"}
+]', '{"title_re": ".*Paint"}')
+
+desktop_vision_locate('{"title_re": ".*Paint"}', "the rectangle that was just drawn")
+# → {"found": true, "x": 350, "y": 375, "confidence": 0.92, "reasoning": "..."}
+```
+
+`click_image` is deterministic and free; `assert vision` and `desktop_vision_locate`
+ask a multimodal model and are the last resort. The metrics layer counts how often a
+run needed pixels instead of the tree (`pixel_fallback_rate`).
+
+### LibreOffice Writer — typing, shortcuts and a native dialog
+
+```python
+desktop_launch("C:/Program Files/LibreOffice/program/soffice.exe", args="--writer",
+               title_re=".*LibreOffice Writer", wait_seconds=8)
+
+desktop_execute_sequence('[
+  {"action": "type", "text": "Quarterly report"},
+  {"action": "press", "key": "Enter"},
+  {"action": "type", "text": "Generated by an agent that mapped the window first."},
+  {"action": "press", "key": "ctrl+s"},
+  {"action": "wait_for", "window": {"title_re": ".*Save As.*"}, "timeout": 15},
+  {"action": "set_text", "locator": {"auto_id": "1001"}, "value": "report.odt"},
+  {"action": "press", "key": "Enter"},
+  {"action": "wait_for", "window": {"title_re": "report.odt.*LibreOffice Writer"}},
+  {"action": "assert", "kind": "vision", "expectation": "the document shows the title Quarterly report"}
+]', '{"title_re": ".*LibreOffice Writer"}')
+```
+
+`type` sends literal text (specials are escaped for you); `press` takes
+human-readable keys (`ctrl+s`, `alt+f`, `F5`) or raw pywinauto syntax (`{ENTER}`).
+
+### Record once, replay forever
+
+```python
+desktop_record_start("new-document", '{"title_re": ".*Notepad"}')   # go click and type in the VM…
+desktop_record_stop("new-document")
+# → steps: [{"action": "click", "locator": {"auto_id": "15"}, "_recorded": {"control_type": "Edit", "title": "Text Editor"}},
+#           {"action": "type", "text": "hello"}, {"action": "press", "key": "ctrl+s"}, ..., {"action": "snapshot"}]
+
+desktop_scenario_from_macro("new-document")     # adds control_exists before every click + window_exists
+desktop_macro_run("new-document")               # or replay as-is
+```
+
+Recorded clicks carry the control under the cursor as a locator, not coordinates, so
+the macro survives a window moved to another position — and, through locator healing,
+a control that was later renamed.
+
+### Reset, run, measure — the nightly loop
+
+```python
+vm_snapshot_restore("win11-lab", "clean")                       # known state, every time
+vm_agent_check("http://192.168.122.15:8020", token="SECRET")    # agent alive in the guest
+desktop_run_suite("scenarios/", name="nightly", tags_json='["smoke"]')
+metrics_summary("7d")                                           # improving / stable / worsening
+metrics_dashboard("30d")                                        # HTML with charts and map drift
+```
 
 ---
 
@@ -334,13 +549,98 @@ Locators: `{"auto_id": "1001"}` · `{"title": "Salvar", "control_type": "Button"
 `{"title_re": "Sal.*"}` · `{"path": "0/2/1"}` · add `"found_index": n` when ambiguous.
 Shorthand strings also work: `"auto_id=1001"`, `"title=Salvar;control_type=Button"`.
 
-### Developing without a Windows VM
+### Developing without a Windows VM — the simulated app (unedited output)
 
-`POLARIX_DESKTOP_DRIVER=fake` runs every desktop tool against a simulated
-Notepad-like app with a "Salvar como" dialog — the whole map → plan → execute → diff
-pipeline works on Linux, and the test-suite (`python3.11 -m pytest tests`) exercises
-it, including the host→agent hop over the loopback. Start the agent with
-`python -m polarix.desktop.agent --driver fake` to get a persistent simulated target.
+`POLARIX_DESKTOP_DRIVER=fake` runs every desktop tool against a simulated text editor
+with a "Salvar como" (Save As) dialog. The whole pipeline works on Linux and the
+test-suite (`python3.11 -m pytest tests`) exercises it, including the host→agent hop
+over the loopback. Everything below is real output from that driver.
+
+```python
+desktop_map_window('{"title_re": ".*Editor.*"}')
+```
+```json
+{"window": {"title": "Sem título - Editor", "process": "editor.exe", "pid": 4242, "handle": 56436},
+ "control_count": 6,
+ "control_index": {
+   "MenuItem":  [{"path": "0/0", "title": "Arquivo"}, {"path": "0/1", "title": "Editar"}, {"path": "0/2", "title": "Ajuda"}],
+   "Edit":      [{"path": "1", "title": "Editor de texto", "auto_id": "15"}],
+   "StatusBar": [{"path": "2", "title": "Ln 1, Col 1", "auto_id": "1025"}]},
+ "menus": [{"title": "Arquivo", "items": ["Novo", "Abrir...", "Salvar", "Sair"]},
+           {"title": "Editar", "items": ["Desfazer", "Selecionar tudo"]}]}
+```
+
+```python
+desktop_execute_sequence('[
+  {"action": "menu", "path": "Arquivo->Salvar"},
+  {"action": "wait_for", "window": {"title_re": ".*Salvar como.*"}},
+  {"action": "set_text", "locator": {"auto_id": "1001"}, "value": "relatorio.txt"},
+  {"action": "click", "locator": {"auto_id": "1"}},
+  {"action": "wait_for", "window": {"title_re": ".*Editor.*"}}]', '{"title_re": ".*Editor.*"}')
+```
+```json
+{"steps_total": 5, "steps_succeeded": 5,
+ "results": [
+   {"step": 1, "action": "menu",     "success": true, "locator_match_count": null},
+   {"step": 2, "action": "wait_for", "success": true, "locator_match_count": null},
+   {"step": 3, "action": "set_text", "success": true, "locator_match_count": 1},
+   {"step": 4, "action": "click",    "success": true, "locator_match_count": 1},
+   {"step": 5, "action": "wait_for", "success": true, "locator_match_count": null}]}
+```
+
+```python
+desktop_diff_window('{"title_re": ".*Editor.*"}', '[{"action": "menu", "path": "Arquivo->Salvar"}]')
+```
+```json
+{"windows_opened": ["Salvar como"], "windows_closed": [],
+ "summary": {"added": 0, "removed": 0, "text_changes": 0, "state_changes": 0}}
+```
+
+A click whose `auto_id` no longer exists, but that carries the hint recorded at capture
+time, still runs — and tells you what to fix:
+
+```json
+{"step": 1, "action": "click", "success": true, "locator_match_count": 1,
+ "healed_locator": {"title": "Editor de texto", "control_type": "Edit"}}
+// _polarix.warnings: ["Step 1 (click): locator {'auto_id': 'txtBody_v2'} healed via recorded hint → {...}"]
+```
+
+```python
+desktop_run_scenario('{"name": "salvar-relatorio", "window": {"title_re": ".*Editor.*"}, "steps": [ ...the five steps above...,
+  {"action": "assert", "kind": "window_title_contains", "expected": "relatorio.txt"},
+  {"action": "assert", "kind": "window_absent", "window": {"title_re": ".*Salvar como.*"}}]}')
+```
+```json
+{"name": "salvar-relatorio", "status": "passed", "assertions": {"total": 2, "passed": 2, "failed": 0},
+ "steps_total": 7, "steps_succeeded": 7,
+ "report": {"json": ".../salvar-relatorio-20261002-231253.json", "html": ".../salvar-relatorio-20261002-231253.html"}}
+```
+
+After a handful of runs (three passing scenarios, two with a deliberately wrong
+expectation), the ledger already answers:
+
+```python
+metrics_summary("24h")
+```
+```json
+{"health": {"score": 83.5, "previous": null, "delta": null},
+ "indicators": {
+   "map_stable_id_coverage": {"value": 0.9231, "n": 13, "status": "insufficient", "better": "higher"},
+   "locator_hit_rate":       {"value": 1.0,    "n": 9,  "status": "insufficient", "better": "higher"},
+   "healing_rate":           {"value": 0.1111, "n": 9,  "status": "insufficient", "better": "lower"},
+   "step_success_rate":      {"value": 0.9333, "n": 30, "status": "insufficient", "better": "higher"},
+   "scenario_pass_rate":     {"value": 0.6,    "n": 5,  "status": "insufficient", "better": "higher"}},
+ "counts": {"runs": 10, "steps": 30, "maps": 2, "scenarios": 5},
+ "error_taxonomy": {"AssertionError": 2}}
+```
+
+`status` is `insufficient` because there is no previous window yet — from the second
+day on it turns into improving / stable / worsening. `metrics_errors("24h")` already
+names the culprit: the `text_equals` on `auto_id 1025` expecting `Ln 9, Col 9`, and the
+one click that needed healing.
+
+Start the agent with `python -m polarix.desktop.agent --driver fake` to get a
+persistent simulated target for an interactive session.
 
 ### Test scenarios, assertions and KPIs
 
@@ -768,6 +1068,99 @@ Returns: `{ errors, warnings, info, all_messages }`
 **`browser_get_page_content`** — Visible text up to 20,000 characters.
 
 **`browser_get_help`** — Returns full documentation as a string.
+
+### DESKTOP — knowledge
+
+**`desktop_list_windows`** — Top-level windows on the target.
+Returns: `{ windows: [{title, class_name, process, pid, handle, rect, is_active}] }`
+
+**`desktop_map_window`** — UI Automation control tree of a window.
+Returns: `{ window, control_count, controls: [{control_type, title, auto_id, path, rect, enabled}], control_index: {type: [...]}, menus }`
+
+**`desktop_explore_menus`** — Opens every top-level menu and records the items it reveals.
+Returns: `{ menus: [{title, items}], menu_paths: ["Top->Item", ...] }`
+
+### DESKTOP — execution
+
+**`desktop_launch`** — Starts an executable, returns the window and a locator for it.
+Returns: `{ window: {title, process, pid, handle}, window_locator }`
+
+**`desktop_execute_sequence`** — Typed JSON steps against a window.
+Actions: `launch` · `focus` · `click` · `double_click` · `right_click` · `click_image` · `click_vision` · `set_text` · `type` · `press` · `select` · `menu` · `wait_for` · `wait_idle` · `assert` · `snapshot` · `screenshot` · `close`
+Returns: `{ steps_total, steps_succeeded, final_window, results: [{step, action, success, duration_ms, locator_match_count, healed_locator?, result, error}] }`
+
+**`desktop_auto_sequence`** — Map First in one call: map → explore menus → LLM plans from the control index → execute.
+Returns: `{ goal, map_summary, generated_steps, execution }` (`dry_run=True` returns only the steps)
+
+### DESKTOP — verification
+
+**`desktop_diff_window`** — Snapshot, run steps, snapshot again, diff the trees.
+Returns: `{ added, removed, changed_texts, changed_state, windows_opened, windows_closed, summary, execution }`
+
+**`desktop_screenshot`** — Window (or active window) as `data:image/png;base64,...`
+
+### DESKTOP — macros
+
+**`desktop_record_start`** / **`desktop_record_stop`** — Record real mouse/keyboard into steps; clicks resolve to the control under the cursor.
+Returns (stop): `{ steps, step_count, saved_to }`
+
+**`desktop_macro_save`** · **`desktop_macro_list`** · **`desktop_macro_run`** · **`desktop_macro_delete`** — Named macros under `POLARIX_MACROS_DIR`.
+
+### VM
+
+**`vm_backends`** — Which hypervisor CLIs exist on the host (`libvirt`, `virtualbox`, `android`).
+
+**`vm_list`** · **`vm_start`** · **`vm_stop`** — Inventory and power.
+
+**`vm_snapshot_list`** · **`vm_snapshot_save`** · **`vm_snapshot_restore`** — Snapshots; restore leaves the VM running.
+
+**`vm_screenshot`** · **`vm_send_keys`** · **`vm_tap`** — Display and raw input through the hypervisor (no agent needed).
+
+**`vm_guest_ip`** · **`vm_agent_check`** — Find the guest's address and ping the Polarix agent (`GET /health`).
+
+### TESTING
+
+**`desktop_run_scenario`** — One scenario (JSON/YAML text or file): setup → steps with `assert` → teardown, optional VM snapshot restore.
+Returns: `{ status, assertions: {total, passed, failed}, first_failure, failure_screenshot, phases, report: {json, html} }`
+
+**`desktop_run_suite`** — Directory / file / inline list of scenarios, optional tag filter.
+Returns: `{ kpis: {scenarios, passed, failed, error, pass_rate, assertions_total, assertion_pass_rate, duration_ms, mean_scenario_ms, slowest, healed_locators}, failures, report }`
+
+**`desktop_scenario_from_macro`** — Recorded macro → scenario with `control_exists` before each click and `window_exists` at the end.
+
+**`desktop_report_list`** — Saved reports with their KPIs.
+
+Assertion kinds: `control_exists` · `control_absent` · `control_enabled` · `control_disabled` · `text_equals` · `text_contains` · `window_exists` · `window_absent` · `window_title_contains` · `image_present` · `image_absent` · `vision`
+
+### CANVAS FALLBACKS
+
+**`desktop_find_image`** — OpenCV template match inside the window screenshot.
+Returns: `{ found, best: {x, y, score, rect}, matches, screenshot_size }` (window-relative coordinates)
+
+**`desktop_vision_locate`** — Multimodal model locates a described element.
+Returns: `{ found, x, y, confidence, reasoning, model }`
+
+**`desktop_vision_verify`** — Multimodal pass/fail judgement of an expectation.
+Returns: `{ passed, confidence, reasoning, observed, model }`
+
+### METRICS
+
+**`metrics_summary`** — Every indicator for the window vs the previous window.
+Returns: `{ health: {score, previous, delta}, indicators: {name: {value, previous, delta, n, status, better, group}}, regressions, improvements, counts, error_taxonomy, flaky_scenarios }`
+
+**`metrics_trend`** — Bucketed series of one indicator plus an SVG chart.
+Returns: `{ indicator, description, points: [{from, to, value, n}], min, max, last, chart }`
+
+**`metrics_dashboard`** — Self-contained HTML dashboard under `POLARIX_REPORTS_DIR`.
+Returns: `{ html_path, health, regressions, improvements, counts }`
+
+**`metrics_errors`** — Error taxonomy, failures by action, top failing steps, healed locators, map drift (identifiers lost/new), flaky scenarios.
+
+**`metrics_targets`** — Sites, processes and VMs seen in the window with run counts.
+
+**`metrics_indicators`** — Definitions, direction and health-score weights.
+
+**`metrics_export`** — Raw rows of `runs` / `steps` / `maps` / `scenarios` as JSON or CSV.
 
 ---
 
