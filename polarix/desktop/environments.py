@@ -33,6 +33,9 @@ and/or POLARIX_ENVIRONMENTS (inline JSON):
      "variables": {"app": "C:/Program Files/Editor/editor.exe"},
      "default_policy": null, "default_keep_after": null}}
 
+The built-in `sim` environment (target `fake`) is always available for trying the
+flow without a VM; a file/inline entry with the same name overrides it.
+
 State (which environments are up, since when, how many runs) lives in
 POLARIX_ENV_STATE (default $TMP/polarix_env_state.json).
 """
@@ -49,6 +52,20 @@ from polarix.config import env_setting
 from polarix.desktop.steps import run_desktop_steps
 
 POLICIES = ("fresh", "reinstall", "reset", "keep")
+
+# Always present, like the built-in `fake` target: lets anyone try the lifecycle
+# flow (decision → prepare → run → teardown) on the simulated app, no VM needed.
+BUILTIN_ENVIRONMENTS: dict[str, dict] = {
+    "sim": {
+        "target": "fake",
+        "install": [{"action": "shell", "command": "echo install simulated editor"}],
+        "uninstall": [
+            {"action": "shell", "command": "echo uninstall simulated editor"}
+        ],
+        "reset": [{"action": "shell", "command": "echo reset simulated editor data"}],
+        "variables": {"app": "C:/Simulated/editor.exe"},
+    }
+}
 
 
 # ------------------------------------------------------------------ config
@@ -89,7 +106,9 @@ def _validate(name: str, cfg: Any) -> dict:
 
 
 def load_environments() -> dict[str, dict]:
-    envs: dict[str, dict] = {}
+    envs: dict[str, dict] = {
+        name: _validate(name, cfg) for name, cfg in BUILTIN_ENVIRONMENTS.items()
+    }
     path = environments_file()
     if os.path.exists(path):
         with open(path, encoding="utf-8") as f:

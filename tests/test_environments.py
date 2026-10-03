@@ -44,6 +44,19 @@ def env(monkeypatch, tmp_path):
     return envs
 
 
+def test_builtin_sim_is_always_there_and_overridable(monkeypatch, tmp_path):
+    monkeypatch.setenv("POLARIX_ENVIRONMENTS_FILE", "/nonexistent/x.json")
+    monkeypatch.delenv("POLARIX_ENVIRONMENTS", raising=False)
+    monkeypatch.setenv("POLARIX_ENV_STATE", str(tmp_path / "s.json"))
+    sim = envs.load_environments()["sim"]
+    assert sim["target"] == "fake" and sim["variables"]["app"]
+    assert envs.prepare("sim", get_driver(target="fake"), "fresh")["ok"]
+    monkeypatch.setenv(
+        "POLARIX_ENVIRONMENTS", '{"sim": {"target": "fake", "variables": {"app": "X"}}}'
+    )
+    assert envs.load_environments()["sim"]["variables"] == {"app": "X"}
+
+
 def test_validate_rejects_bad_config(monkeypatch):
     monkeypatch.setenv("POLARIX_ENVIRONMENTS_FILE", "/nonexistent/x.json")
     monkeypatch.setenv("POLARIX_ENVIRONMENTS", '{"a": {"install": []}}')
@@ -131,7 +144,7 @@ def test_fresh_restores_snapshot_when_target_has_vm(env, monkeypatch):
     assert calls == [("win11", "clean")] and rep["ok"]
     rep = envs.tear_down("e", drv, "both", vm_backend_factory=lambda b: Backend())
     assert calls[-1] == ("win11", "clean") and "snapshot_restore" in rep["phases"]
-    assert envs.describe()[0]["target"] == "vmfake"
+    assert {d["name"]: d["target"] for d in envs.describe()}["e"] == "vmfake"
 
 
 def test_substitute_and_matrix():
@@ -185,7 +198,11 @@ async def test_tools_round_trip(env):
     from polarix.tools import environments as tools
 
     listing = json.loads(await tools.environment_list())
-    assert {e["name"] for e in listing["environments"]} == {"sim", "broken", "auto"}
+    assert {e["name"] for e in listing["environments"]} == {
+        "sim",
+        "broken",
+        "auto",
+    }  # sim overrides builtin
     assert "fresh" in listing["policies"]
 
     plan = json.loads(await tools.environment_plan("sim"))
